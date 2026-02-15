@@ -106,8 +106,14 @@ def segment_views(
         vx, vy = _to_visual(tc.x, tc.y, rot, mw, mh)
         vis_titles.append((vtype, title_span, scale, vx, vy))
 
+    # Detect info panels (spec tables) to exclude from view regions
+    info_panels = _detect_info_panels(primitives.lines, rot, mw, mh, vis_w)
+
     # B2: Build regions in visual space (label = bottom of view)
     vis_regions = _build_visual_regions(vis_titles, vis_w, vis_h)
+
+    # Clip regions against info panels
+    vis_regions = _clip_regions_against_panels(vis_regions, vis_titles, info_panels)
 
     # B3: Convert back to mediabox and assemble View objects
     views: list[View] = []
@@ -206,6 +212,93 @@ def _find_all_view_titles(
 
 _ROW_THRESHOLD = 60.0   # pts – titles with vis_y within this are same row
 _LABEL_PAD = 30.0       # pts – padding below label to include the label box
+_INFO_PANEL_MARGIN = 20.0  # pts – gap between drawing area and info panel
+
+
+def _detect_info_panels(
+    lines: list[Line],
+    rot: int, mw: float, mh: float,
+    vis_w: float,
+) -> list[tuple[float, float, float, float]]:
+    """Detect specification/info table regions in visual space.
+
+    Looks for clusters of horizontal lines forming a table in the right
+    portion of the page.  Returns list of (vx0, vy0, vx1, vy1).
+    """
+    # Transform horizontal lines (>100pt) to visual space
+    h_lines_vis: list[tuple[float, float, float]] = []  # (x0, x1, y)
+    for l in lines:
+        vp1 = _to_visual(l.p1.x, l.p1.y, rot, mw, mh)
+        vp2 = _to_visual(l.p2.x, l.p2.y, rot, mw, mh)
+        dx = abs(vp1[0] - vp2[0])
+        dy = abs(vp1[1] - vp2[1])
+        if dy < 2 and dx > 100:
+            vx_min = min(vp1[0], vp2[0])
+            vx_max = max(vp1[0], vp2[0])
+            vy = (vp1[1] + vp2[1]) / 2
+            # Only consider lines starting in the right 40% of the page
+            if vx_min > vis_w * 0.6:
+                h_lines_vis.append((vx_min, vx_max, vy))
+
+    if len(h_lines_vis) < 5:
+        return []
+
+    # Cluster lines with similar x-extent (x0 and x1 within tolerance)
+    xtol = 50
+    used: set[int] = set()
+    panels: list[tuple[float, float, float, float]] = []
+
+    for i, (x0i, x1i, _yi) in enumerate(h_lines_vis):
+        if i in used:
+            continue
+        cluster = [i]
+        used.add(i)
+        for j, (x0j, x1j, _yj) in enumerate(h_lines_vis):
+            if j in used:
+                continue
+            if abs(x0j - x0i) < xtol and abs(x1j - x1i) < xtol:
+                cluster.append(j)
+                used.add(j)
+        if len(cluster) >= 5:
+            cx0 = min(h_lines_vis[k][0] for k in cluster)
+            cx1 = max(h_lines_vis[k][1] for k in cluster)
+            cy0 = min(h_lines_vis[k][2] for k in cluster)
+            cy1 = max(h_lines_vis[k][2] for k in cluster)
+            panels.append((cx0, cy0, cx1, cy1))
+
+    return panels
+
+
+def _clip_regions_against_panels(
+    regions: list[tuple[float, float, float, float]],
+    vis_titles: list[tuple[ViewType, TextSpan, str | None, float, float]],
+    panels: list[tuple[float, float, float, float]],
+) -> list[tuple[float, float, float, float]]:
+    """Clip view regions to exclude info panel areas.
+
+    Only clips a region if the panel is to the right of the view title
+    and the region vertically overlaps with the panel.
+    """
+    if not panels:
+        return regions
+
+    clipped = []
+    for i, (rx0, ry0, rx1, ry1) in enumerate(regions):
+        title_vx = vis_titles[i][3]
+        for px0, py0, px1, py1 in panels:
+            # Panel must be to the right of the title center
+            if px0 <= title_vx:
+                continue
+            # Region must vertically overlap with panel
+            if ry0 >= py1 or ry1 <= py0:
+                continue
+            # Clip right edge
+            new_rx1 = px0 - _INFO_PANEL_MARGIN
+            if new_rx1 > title_vx:  # Don't clip past the title
+                rx1 = min(rx1, new_rx1)
+        clipped.append((rx0, ry0, rx1, ry1))
+
+    return clipped
 
 
 def _build_visual_regions(
