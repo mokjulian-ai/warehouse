@@ -1,0 +1,221 @@
+"""All Pydantic data models for the drawing analysis pipeline."""
+
+from __future__ import annotations
+
+from enum import Enum
+
+from pydantic import BaseModel, Field
+
+
+# --- Primitives (Step A) ---
+
+
+class Point(BaseModel):
+    x: float
+    y: float
+
+
+class BBox(BaseModel):
+    """Bounding box: (x0, y0) top-left, (x1, y1) bottom-right."""
+
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    @property
+    def center(self) -> Point:
+        return Point(x=(self.x0 + self.x1) / 2, y=(self.y0 + self.y1) / 2)
+
+    @property
+    def width(self) -> float:
+        return self.x1 - self.x0
+
+    @property
+    def height(self) -> float:
+        return self.y1 - self.y0
+
+    @property
+    def area(self) -> float:
+        return self.width * self.height
+
+    def contains(self, p: Point) -> bool:
+        return self.x0 <= p.x <= self.x1 and self.y0 <= p.y <= self.y1
+
+    def overlaps(self, other: BBox) -> bool:
+        return not (
+            self.x1 < other.x0
+            or other.x1 < self.x0
+            or self.y1 < other.y0
+            or other.y1 < self.y0
+        )
+
+    def expand(self, margin: float) -> BBox:
+        return BBox(
+            x0=self.x0 - margin,
+            y0=self.y0 - margin,
+            x1=self.x1 + margin,
+            y1=self.y1 + margin,
+        )
+
+    def intersection(self, other: BBox) -> BBox | None:
+        x0 = max(self.x0, other.x0)
+        y0 = max(self.y0, other.y0)
+        x1 = min(self.x1, other.x1)
+        y1 = min(self.y1, other.y1)
+        if x0 < x1 and y0 < y1:
+            return BBox(x0=x0, y0=y0, x1=x1, y1=y1)
+        return None
+
+
+class TextSpan(BaseModel):
+    """A single text element extracted from the PDF."""
+
+    text: str
+    bbox: BBox
+    center: Point
+    font: str = ""
+    size: float = 0.0
+
+
+class Line(BaseModel):
+    """A vector line segment."""
+
+    p1: Point
+    p2: Point
+    length: float
+    angle: float  # degrees, 0=right, 90=down
+    width: float = 1.0
+    color: list[float] | None = None
+
+
+class PagePrimitives(BaseModel):
+    """All raw primitives extracted from one PDF page."""
+
+    page_index: int
+    page_width: float
+    page_height: float
+    texts: list[TextSpan]
+    lines: list[Line]
+    rects: list[BBox]
+
+
+# --- Views (Step B) ---
+
+
+class ViewType(str, Enum):
+    ROOF_PLAN = "屋根伏図"
+    FLOOR_PLAN = "平面図"
+    ELEVATION = "立面図"
+    SECTION = "断面図"
+    UNKNOWN = "unknown"
+
+
+class View(BaseModel):
+    view_type: ViewType
+    title_text: str
+    title_bbox: BBox
+    region: BBox
+    scale: str | None = None
+    texts: list[TextSpan]
+    lines: list[Line]
+
+
+# --- Grid (Step C) ---
+
+
+class GridAxis(str, Enum):
+    X = "X"
+    Y = "Y"
+
+
+class GridLabel(BaseModel):
+    axis: GridAxis
+    label: str
+    index: int
+    position: float
+    text_span: TextSpan
+    line: Line | None = None
+
+
+class GridSystem(BaseModel):
+    x_labels: list[GridLabel]
+    y_labels: list[GridLabel]
+    source_view: ViewType
+
+
+# --- Dimensions (Step D) ---
+
+
+class DimensionType(str, Enum):
+    SINGLE = "single"
+    PITCH = "pitch"
+    REPEAT = "repeat"
+
+
+class Dimension(BaseModel):
+    value: float
+    raw_text: str
+    dim_type: DimensionType
+    repeat_count: int | None = None
+    text_span: TextSpan
+    nearest_lines: list[Line] = Field(default_factory=list)
+    source_view: ViewType | None = None
+
+
+# --- Heights (Step E) ---
+
+
+class HeightType(str, Enum):
+    EAVE_HEIGHT = "軒高"
+    MAX_HEIGHT = "最高高さ"
+    GL = "GL"
+    FL = "FL"
+    DESIGN_GL = "設計GL"
+
+
+class HeightParam(BaseModel):
+    height_type: HeightType
+    value: float | None = None
+    raw_text: str
+    text_span: TextSpan
+    source_view: ViewType | None = None
+
+
+# --- Quality (Step F) ---
+
+
+class GateStatus(str, Enum):
+    PASS = "pass"
+    WARN = "warn"
+    FAIL = "fail"
+
+
+class QualityCheck(BaseModel):
+    name: str
+    status: GateStatus
+    message: str
+    detail: str | None = None
+
+
+class QualityReport(BaseModel):
+    overall: GateStatus
+    checks: list[QualityCheck]
+
+
+# --- Final Output (Step G) ---
+
+
+class AnalysisResult(BaseModel):
+    filename: str
+    page_count: int
+    page_width: float
+    page_height: float
+    page_rotation: int = 0
+    page_image: str | None = None  # base64 PNG of rendered page
+    views: list[View]
+    grid_system: GridSystem | None = None
+    dimensions: list[Dimension]
+    heights: list[HeightParam]
+    quality: QualityReport
+    diagnostics: dict = Field(default_factory=dict)

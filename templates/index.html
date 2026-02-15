@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drawing Analyzer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f2f5;
+            padding: 24px 16px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.4rem;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        h1 span { color: #888; font-weight: 400; font-size: 1rem; margin-left: 8px; }
+
+        /* Upload Zone */
+        .upload-zone {
+            background: #fff;
+            border: 2px dashed #ccc;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            margin-bottom: 20px;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #4f46e5;
+            background: #f5f3ff;
+        }
+        .upload-zone p { color: #666; margin-bottom: 8px; }
+        .upload-zone .hint { color: #aaa; font-size: 0.85rem; }
+        .upload-zone .selected { color: #4f46e5; font-weight: 600; margin-top: 12px; }
+        .upload-zone input { display: none; }
+
+        /* Analyze button */
+        .btn-row { margin-bottom: 20px; }
+        .btn {
+            padding: 12px 32px;
+            background: #4f46e5;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        .btn:hover { background: #4338ca; }
+        .btn:disabled { background: #a5a3d9; cursor: not-allowed; }
+
+        /* Loading */
+        .loading { display: none; align-items: center; gap: 12px; margin-bottom: 20px; color: #666; }
+        .loading.active { display: flex; }
+        .spinner {
+            width: 24px; height: 24px;
+            border: 3px solid #e0e0e0;
+            border-top-color: #4f46e5;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Error */
+        .error-msg {
+            display: none;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            color: #dc2626;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .error-msg.active { display: block; }
+
+        /* Tabs */
+        .results { display: none; }
+        .results.active { display: block; }
+        .tab-bar {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #e5e7eb;
+            margin-bottom: 0;
+            background: #fff;
+            border-radius: 12px 12px 0 0;
+            overflow-x: auto;
+        }
+        .tab-btn {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            font-size: 0.9rem;
+            color: #666;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            white-space: nowrap;
+        }
+        .tab-btn:hover { color: #4f46e5; }
+        .tab-btn.active { color: #4f46e5; border-bottom-color: #4f46e5; font-weight: 600; }
+        .tab-panel {
+            display: none;
+            background: #fff;
+            padding: 24px;
+            border-radius: 0 0 12px 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            min-height: 200px;
+        }
+        .tab-panel.active { display: block; }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        th { background: #f9fafb; font-weight: 600; color: #555; }
+        tr:hover td { background: #f9fafb; }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        .badge.pass { background: #dcfce7; color: #166534; }
+        .badge.warn { background: #fef9c3; color: #854d0e; }
+        .badge.fail { background: #fecaca; color: #991b1b; }
+        .badge.single { background: #e0e7ff; color: #3730a3; }
+        .badge.pitch { background: #fce7f3; color: #9d174d; }
+        .badge.repeat { background: #fff7ed; color: #9a3412; }
+
+        /* SVG views */
+        .svg-container {
+            background: #fafafa;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 16px;
+            overflow: auto;
+        }
+        .svg-container svg { max-width: 100%; height: auto; }
+
+        /* Quality checks */
+        .check-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .check-icon { font-size: 1.2rem; width: 24px; text-align: center; }
+        .check-name { font-weight: 600; color: #333; min-width: 200px; }
+        .check-msg { color: #666; flex: 1; }
+        .check-detail { color: #999; font-size: 0.85rem; }
+
+        /* JSON */
+        .json-block {
+            background: #1e1e2e;
+            color: #a6e3a1;
+            padding: 16px;
+            border-radius: 8px;
+            overflow: auto;
+            max-height: 600px;
+            font-family: "SF Mono", "Fira Code", monospace;
+            font-size: 0.82rem;
+            line-height: 1.5;
+            white-space: pre;
+        }
+        .copy-btn {
+            padding: 6px 14px;
+            background: #374151;
+            color: #d1d5db;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.82rem;
+            cursor: pointer;
+            margin-bottom: 8px;
+        }
+        .copy-btn:hover { background: #4b5563; }
+
+        /* PDF overlay */
+        .pdf-viewer {
+            position: relative;
+            display: inline-block;
+            max-width: 100%;
+        }
+        .pdf-viewer img {
+            display: block;
+            max-width: 100%;
+            height: auto;
+        }
+        .pdf-viewer svg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .pdf-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+        .pdf-legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.9rem;
+        }
+        .pdf-legend-swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            border: 2px solid;
+        }
+
+        /* Diagnostics summary */
+        .diag-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .diag-card {
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 12px 16px;
+        }
+        .diag-card .label { font-size: 0.8rem; color: #888; }
+        .diag-card .value { font-size: 1.3rem; font-weight: 700; color: #333; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Drawing Analyzer <span>図面解析ツール</span></h1>
+
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <p>Drop a PDF here or click to select</p>
+            <p class="hint">Supports AutoCAD-exported vector PDFs</p>
+            <div class="selected" id="selectedFile" style="display:none"></div>
+            <input type="file" id="fileInput" accept=".pdf">
+        </div>
+
+        <div class="btn-row">
+            <button class="btn" id="analyzeBtn" onclick="analyzeDrawing()" disabled>Analyze</button>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <span>Analyzing drawing...</span>
+        </div>
+
+        <div class="error-msg" id="errorMsg"></div>
+
+        <div class="results" id="results">
+            <div class="tab-bar" id="tabBar">
+                <button class="tab-btn active" onclick="switchTab('pdf')">PDF</button>
+                <button class="tab-btn" onclick="switchTab('views')">Views</button>
+                <button class="tab-btn" onclick="switchTab('grid')">Grid</button>
+                <button class="tab-btn" onclick="switchTab('dims')">Dimensions</button>
+                <button class="tab-btn" onclick="switchTab('heights')">Heights</button>
+                <button class="tab-btn" onclick="switchTab('quality')">Quality</button>
+                <button class="tab-btn" onclick="switchTab('json')">Raw JSON</button>
+            </div>
+
+            <div class="tab-panel active" id="panel-pdf"></div>
+            <div class="tab-panel" id="panel-views"></div>
+            <div class="tab-panel" id="panel-grid"></div>
+            <div class="tab-panel" id="panel-dims"></div>
+            <div class="tab-panel" id="panel-heights"></div>
+            <div class="tab-panel" id="panel-quality"></div>
+            <div class="tab-panel" id="panel-json"></div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+        let analysisData = null;
+
+        // --- Upload handling ---
+        const dropZone = document.getElementById("dropZone");
+        const fileInput = document.getElementById("fileInput");
+
+        dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+        dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+        dropZone.addEventListener("drop", e => {
+            e.preventDefault();
+            dropZone.classList.remove("dragover");
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener("change", () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+        function handleFile(file) {
+            if (!file.name.toLowerCase().endsWith(".pdf")) {
+                showError("Please select a PDF file.");
+                return;
+            }
+            selectedFile = file;
+            const el = document.getElementById("selectedFile");
+            el.textContent = file.name + " (" + (file.size / 1024).toFixed(1) + " KB)";
+            el.style.display = "block";
+            document.getElementById("analyzeBtn").disabled = false;
+            hideError();
+        }
+
+        // --- Analysis ---
+        async function analyzeDrawing() {
+            if (!selectedFile) return;
+
+            const btn = document.getElementById("analyzeBtn");
+            const loading = document.getElementById("loading");
+
+            btn.disabled = true;
+            loading.classList.add("active");
+            hideError();
+            document.getElementById("results").classList.remove("active");
+
+            const form = new FormData();
+            form.append("file", selectedFile);
+
+            try {
+                const res = await fetch("/api/analyze", { method: "POST", body: form });
+                const data = await res.json();
+
+                if (data.error) {
+                    showError(data.error + ": " + (data.detail || ""));
+                    return;
+                }
+
+                analysisData = data;
+                renderResults(data);
+                document.getElementById("results").classList.add("active");
+            } catch (err) {
+                showError("Request failed: " + err.message);
+            } finally {
+                loading.classList.remove("active");
+                btn.disabled = false;
+            }
+        }
+
+        function showError(msg) {
+            const el = document.getElementById("errorMsg");
+            el.textContent = msg;
+            el.classList.add("active");
+        }
+        function hideError() { document.getElementById("errorMsg").classList.remove("active"); }
+
+        // --- Tab switching ---
+        function switchTab(name) {
+            document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+            document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+            const tabs = ["pdf", "views", "grid", "dims", "heights", "quality", "json"];
+            const idx = tabs.indexOf(name);
+            if (idx >= 0) {
+                document.querySelectorAll(".tab-btn")[idx].classList.add("active");
+                document.getElementById("panel-" + name).classList.add("active");
+            }
+        }
+
+        // --- Render results ---
+        function renderResults(data) {
+            renderPdfTab(data);
+            renderViewsTab(data);
+            renderGridTab(data);
+            renderDimsTab(data);
+            renderHeightsTab(data);
+            renderQualityTab(data);
+            renderJsonTab(data);
+        }
+
+        // --- PDF Tab ---
+        function renderPdfTab(data) {
+            const panel = document.getElementById("panel-pdf");
+            if (!data.page_image) {
+                panel.innerHTML = '<p style="color:#999">No PDF image available.</p>';
+                return;
+            }
+
+            const views = data.views || [];
+            const rot = data.page_rotation || 0;
+            const mw = data.page_width;   // mediabox width
+            const mh = data.page_height;  // mediabox height
+
+            // Visual dimensions after rotation
+            var visW, visH;
+            if (rot === 90 || rot === 270) {
+                visW = mh; visH = mw;
+            } else {
+                visW = mw; visH = mh;
+            }
+
+            // Transform mediabox bbox → visual coordinates based on rotation
+            // Rotation is CW degrees. Visual size: rot 90/270 → (mh × mw), else (mw × mh)
+            // rot=270 (90° CCW): (mx,my) → visual (my, mw - mx)
+            // rot=90  (90° CW):  (mx,my) → visual (mh - my, mx)
+            function toVisual(bbox) {
+                var x0 = bbox.x0, y0 = bbox.y0, x1 = bbox.x1, y1 = bbox.y1;
+                var vx0, vy0, vx1, vy1;
+                if (rot === 270) {
+                    vx0 = y0;      vy0 = mw - x1;
+                    vx1 = y1;      vy1 = mw - x0;
+                } else if (rot === 90) {
+                    vx0 = mh - y1; vy0 = x0;
+                    vx1 = mh - y0; vy1 = x1;
+                } else if (rot === 180) {
+                    vx0 = mw - x1; vy0 = mh - y1;
+                    vx1 = mw - x0; vy1 = mh - y0;
+                } else {
+                    vx0 = x0; vy0 = y0; vx1 = x1; vy1 = y1;
+                }
+                return { x0: vx0, y0: vy0, x1: vx1, y1: vy1 };
+            }
+
+            var colors = {
+                "\u5c4b\u6839\u4f0f\u56f3": { fill: "#ef4444", name: "屋根伏図" },
+                "\u5e73\u9762\u56f3":       { fill: "#3b82f6", name: "平面図" },
+                "\u7acb\u9762\u56f3":       { fill: "#22c55e", name: "立面図" },
+                "\u65ad\u9762\u56f3":       { fill: "#f59e0b", name: "断面図" },
+                "unknown":                  { fill: "#9ca3af", name: "Unknown" }
+            };
+
+            // Legend
+            var html = '<div class="pdf-legend">';
+            views.forEach(function(v) {
+                var c = colors[v.view_type] || colors["unknown"];
+                html += '<div class="pdf-legend-item">';
+                html += '<div class="pdf-legend-swatch" style="background:' + c.fill + '33;border-color:' + c.fill + '"></div>';
+                html += '<span>' + c.name + (v.scale ? ' (S=' + v.scale + ')' : '') + '</span>';
+                html += '</div>';
+            });
+            html += '</div>';
+
+            // PDF image with SVG overlay
+            html += '<div class="pdf-viewer">';
+            html += '<img src="data:image/png;base64,' + data.page_image + '" alt="PDF page">';
+            html += '<svg viewBox="0 0 ' + visW + ' ' + visH + '" preserveAspectRatio="none">';
+
+            views.forEach(function(v) {
+                var c = colors[v.view_type] || colors["unknown"];
+                var vr = toVisual(v.region);
+                var w = vr.x1 - vr.x0, h = vr.y1 - vr.y0;
+                // Rectangle
+                html += '<rect x="' + vr.x0 + '" y="' + vr.y0 + '" width="' + w + '" height="' + h + '" ';
+                html += 'fill="' + c.fill + '" fill-opacity="0.12" stroke="' + c.fill + '" stroke-width="3" stroke-dasharray="8,4"/>';
+                // Label background
+                var labelW = 180, labelH = 28;
+                html += '<rect x="' + vr.x0 + '" y="' + vr.y0 + '" width="' + labelW + '" height="' + labelH + '" ';
+                html += 'fill="' + c.fill + '" rx="4"/>';
+                // Label text
+                html += '<text x="' + (vr.x0 + 8) + '" y="' + (vr.y0 + 19) + '" fill="#fff" font-size="16" font-weight="bold">';
+                html += c.name + (v.scale ? '  S=' + v.scale : '') + '</text>';
+                // Corner coordinates
+                var corners = [
+                    { x: vr.x0, y: vr.y0, anchor: "start",  label: "(" + vr.x0.toFixed(0) + "," + vr.y0.toFixed(0) + ")", dy: -4 },
+                    { x: vr.x1, y: vr.y0, anchor: "end",    label: "(" + vr.x1.toFixed(0) + "," + vr.y0.toFixed(0) + ")", dy: -4 },
+                    { x: vr.x0, y: vr.y1, anchor: "start",  label: "(" + vr.x0.toFixed(0) + "," + vr.y1.toFixed(0) + ")", dy: 14 },
+                    { x: vr.x1, y: vr.y1, anchor: "end",    label: "(" + vr.x1.toFixed(0) + "," + vr.y1.toFixed(0) + ")", dy: 14 }
+                ];
+                corners.forEach(function(cr) {
+                    // dot
+                    html += '<circle cx="' + cr.x + '" cy="' + cr.y + '" r="4" fill="' + c.fill + '"/>';
+                    // bg for readability
+                    html += '<text x="' + cr.x + '" y="' + (cr.y + cr.dy) + '" text-anchor="' + cr.anchor + '" ';
+                    html += 'font-size="11" fill="' + c.fill + '" font-weight="bold" ';
+                    html += 'stroke="#fff" stroke-width="3" paint-order="stroke">' + cr.label + '</text>';
+                });
+            });
+
+            html += '</svg></div>';
+            panel.innerHTML = html;
+        }
+
+        // --- Views Tab ---
+        function renderViewsTab(data) {
+            const panel = document.getElementById("panel-views");
+            const views = data.views || [];
+            const pw = data.page_width, ph = data.page_height;
+
+            // Diagnostics summary
+            const d = data.diagnostics || {};
+            let html = '<div class="diag-grid">';
+            html += diagCard("Texts", d.text_count || 0);
+            html += diagCard("Lines", d.line_count || 0);
+            html += diagCard("Rects", d.rect_count || 0);
+            html += diagCard("Views", views.length);
+            html += '</div>';
+
+            if (views.length === 0) {
+                html += '<p style="color:#999">No views detected.</p>';
+                panel.innerHTML = html;
+                return;
+            }
+
+            // SVG visualization
+            const colors = { "\u5c4b\u6839\u4f0f\u56f3": "#ef4444", "\u5e73\u9762\u56f3": "#3b82f6", "\u7acb\u9762\u56f3": "#22c55e", "\u65ad\u9762\u56f3": "#f59e0b", "unknown": "#9ca3af" };
+            const svgW = 800, svgH = (ph / pw) * svgW;
+            const sx = svgW / pw, sy = svgH / ph;
+
+            html += '<div class="svg-container">';
+            html += '<svg width="' + svgW + '" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '">';
+            html += '<rect x="0" y="0" width="' + svgW + '" height="' + svgH + '" fill="#fafafa" stroke="#ccc"/>';
+
+            views.forEach(function(v) {
+                var r = v.region;
+                var color = colors[v.view_type] || "#9ca3af";
+                var x = r.x0 * sx, y = r.y0 * sy;
+                var w = (r.x1 - r.x0) * sx, h = (r.y1 - r.y0) * sy;
+                html += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + color + '" fill-opacity="0.15" stroke="' + color + '" stroke-width="2"/>';
+                html += '<text x="' + (x + 8) + '" y="' + (y + 20) + '" fill="' + color + '" font-size="14" font-weight="bold">' + v.view_type + (v.scale ? ' (S=' + v.scale + ')' : '') + '</text>';
+                html += '<text x="' + (x + 8) + '" y="' + (y + 38) + '" fill="#888" font-size="11">' + v.texts.length + ' texts, ' + v.lines.length + ' lines</text>';
+            });
+
+            html += '</svg></div>';
+
+            // View list table
+            html += '<table><tr><th>View</th><th>Title Text</th><th>Scale</th><th>Texts</th><th>Lines</th><th>Region</th></tr>';
+            views.forEach(function(v) {
+                var r = v.region;
+                html += '<tr>';
+                html += '<td><strong>' + esc(v.view_type) + '</strong></td>';
+                html += '<td>' + esc(v.title_text) + '</td>';
+                html += '<td>' + (v.scale || '-') + '</td>';
+                html += '<td>' + v.texts.length + '</td>';
+                html += '<td>' + v.lines.length + '</td>';
+                html += '<td style="font-size:0.8rem;color:#999">(' + r.x0.toFixed(0) + ', ' + r.y0.toFixed(0) + ') - (' + r.x1.toFixed(0) + ', ' + r.y1.toFixed(0) + ')</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+            panel.innerHTML = html;
+        }
+
+        // --- Grid Tab ---
+        function renderGridTab(data) {
+            const panel = document.getElementById("panel-grid");
+            const grid = data.grid_system;
+
+            if (!grid) {
+                panel.innerHTML = '<p style="color:#999">No grid system detected.</p>';
+                return;
+            }
+
+            let html = '<p style="margin-bottom:16px">Source view: <strong>' + esc(grid.source_view) + '</strong></p>';
+
+            const allLabels = [].concat(grid.x_labels || [], grid.y_labels || []);
+            html += '<table><tr><th>Label</th><th>Axis</th><th>Index</th><th>Position (pts)</th><th>Has Line</th></tr>';
+            allLabels.forEach(function(l) {
+                html += '<tr>';
+                html += '<td><strong>' + esc(l.label) + '</strong></td>';
+                html += '<td>' + l.axis + '</td>';
+                html += '<td>' + l.index + '</td>';
+                html += '<td>' + l.position.toFixed(1) + '</td>';
+                html += '<td>' + (l.line ? '<span class="badge pass">Yes</span>' : '<span class="badge warn">No</span>') + '</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+            panel.innerHTML = html;
+        }
+
+        // --- Dimensions Tab ---
+        function renderDimsTab(data) {
+            const panel = document.getElementById("panel-dims");
+            const dims = data.dimensions || [];
+
+            if (dims.length === 0) {
+                panel.innerHTML = '<p style="color:#999">No dimensions extracted.</p>';
+                return;
+            }
+
+            const sorted = dims.slice().sort(function(a, b) { return b.value - a.value; });
+            let html = '<p style="margin-bottom:16px">' + dims.length + ' dimensions extracted</p>';
+            html += '<table><tr><th>Value (mm)</th><th>Type</th><th>Count</th><th>Raw Text</th><th>View</th></tr>';
+            sorted.forEach(function(d) {
+                html += '<tr>';
+                html += '<td><strong>' + d.value + '</strong></td>';
+                html += '<td><span class="badge ' + d.dim_type + '">' + d.dim_type + '</span></td>';
+                html += '<td>' + (d.repeat_count || '-') + '</td>';
+                html += '<td>' + esc(d.raw_text) + '</td>';
+                html += '<td>' + (d.source_view || '-') + '</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+            panel.innerHTML = html;
+        }
+
+        // --- Heights Tab ---
+        function renderHeightsTab(data) {
+            const panel = document.getElementById("panel-heights");
+            const heights = data.heights || [];
+
+            if (heights.length === 0) {
+                panel.innerHTML = '<p style="color:#999">No height parameters found.</p>';
+                return;
+            }
+
+            let html = '<table><tr><th>Type</th><th>Value (mm)</th><th>Raw Text</th><th>View</th></tr>';
+            heights.forEach(function(h) {
+                html += '<tr>';
+                html += '<td><strong>' + esc(h.height_type) + '</strong></td>';
+                html += '<td>' + (h.value !== null ? h.value : '-') + '</td>';
+                html += '<td>' + esc(h.raw_text) + '</td>';
+                html += '<td>' + (h.source_view || '-') + '</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+            panel.innerHTML = html;
+        }
+
+        // --- Quality Tab ---
+        function renderQualityTab(data) {
+            const panel = document.getElementById("panel-quality");
+            const q = data.quality;
+
+            if (!q) {
+                panel.innerHTML = '<p style="color:#999">No quality data.</p>';
+                return;
+            }
+
+            const icons = { pass: "\u2705", warn: "\u26a0\ufe0f", fail: "\u274c" };
+            let html = '<div style="margin-bottom:20px">Overall: <span class="badge ' + q.overall + '">' + q.overall.toUpperCase() + '</span></div>';
+
+            (q.checks || []).forEach(function(c) {
+                html += '<div class="check-item">';
+                html += '<span class="check-icon">' + (icons[c.status] || '') + '</span>';
+                html += '<span class="check-name">' + esc(c.name) + '</span>';
+                html += '<span class="check-msg">' + esc(c.message) + '</span>';
+                if (c.detail) html += '<span class="check-detail">' + esc(c.detail) + '</span>';
+                html += '</div>';
+            });
+            panel.innerHTML = html;
+        }
+
+        // --- JSON Tab ---
+        function renderJsonTab(data) {
+            const panel = document.getElementById("panel-json");
+            const json = JSON.stringify(data, null, 2);
+            panel.innerHTML = '<button class="copy-btn" onclick="copyJson()">Copy JSON</button>'
+                + '<div class="json-block" id="jsonBlock">' + esc(json) + '</div>';
+        }
+
+        function copyJson() {
+            const text = JSON.stringify(analysisData, null, 2);
+            navigator.clipboard.writeText(text).then(function() {
+                const btn = document.querySelector(".copy-btn");
+                btn.textContent = "Copied!";
+                setTimeout(function() { btn.textContent = "Copy JSON"; }, 1500);
+            });
+        }
+
+        // --- Helpers ---
+        function esc(s) {
+            if (s === null || s === undefined) return '';
+            var d = document.createElement("div");
+            d.textContent = String(s);
+            return d.innerHTML;
+        }
+        function diagCard(label, value) {
+            return '<div class="diag-card"><div class="label">' + label + '</div><div class="value">' + value + '</div></div>';
+        }
+    </script>
+</body>
+</html>
