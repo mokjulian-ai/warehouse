@@ -7,6 +7,7 @@ import fitz
 from .dimensions import extract_dimensions
 from .grids import extract_grid_system
 from .heights import extract_heights
+from .koyafuse import detect_koyafuse_members
 from .matching import run_matching
 from .quantity import compute_quantity_takeoff
 from .reconstruction import reconstruct_3d
@@ -104,6 +105,12 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
             diagnostics["quantity_total_members"] = quantity_takeoff.total_members
             diagnostics["quantity_total_length_m"] = round(quantity_takeoff.total_length / 1000, 1)
 
+    # Step 5: 小屋伏図 member detection
+    koyafuse = detect_koyafuse_members(doc)
+    if koyafuse:
+        diagnostics["koyafuse_page"] = koyafuse.page_index
+        diagnostics["koyafuse_members"] = len(koyafuse.detected_members)
+
     doc.close()
 
     # Step G: Assemble result
@@ -123,5 +130,6 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         matching=matching,
         structural_model=structural_model,
         quantity_takeoff=quantity_takeoff,
+        koyafuse=koyafuse,
         diagnostics=diagnostics,
     )

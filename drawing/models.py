@@ -331,6 +331,38 @@ class QuantityTakeoff(BaseModel):
     group_tolerance: float = 10.0  # mm tolerance for length grouping
 
 
+# --- Koyafuse (小屋伏図) Member Detection ---
+
+
+class LeaderTip(BaseModel):
+    """A single arrow tip of a leader line."""
+
+    x: float
+    y: float
+    length: float  # Distance from leader origin to this tip
+
+
+class DetectedMember(BaseModel):
+    """A member detected from the 小屋伏図 via leader line tracing."""
+
+    member_number: str  # e.g. "1", "2", "7"
+    modifier: str = ""  # e.g. "内側", "外側"
+    label: str = ""  # Combined: "2内側"
+    label_x: float  # Visual X position of label
+    label_y: float  # Visual Y position of label
+    leader_tips: list[LeaderTip] = Field(default_factory=list)
+    tip_count: int = 0
+
+
+class KoyafuseResult(BaseModel):
+    """Result of 小屋伏図 member detection."""
+
+    page_index: int
+    scale: str = ""  # e.g. "1/100"
+    detected_members: list[DetectedMember]
+    drawing_bbox: dict | None = None  # Visual bounding box of drawing area
+
+
 # --- Final Output (Step G) ---
 
 
@@ -350,4 +382,5 @@ class AnalysisResult(BaseModel):
     matching: MatchingResult | None = None
     structural_model: StructuralModel | None = None
     quantity_takeoff: QuantityTakeoff | None = None
+    koyafuse: KoyafuseResult | None = None
     diagnostics: dict = Field(default_factory=dict)
