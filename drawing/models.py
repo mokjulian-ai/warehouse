@@ -341,6 +341,7 @@ class AnalysisResult(BaseModel):
     page_height: float
     page_rotation: int = 0
     page_image: str | None = None  # base64 PNG of rendered page
+    page_images: list[str] = Field(default_factory=list)  # base64 PNGs of all pages
     views: list[View]
     grid_system: GridSystem | None = None
     dimensions: list[Dimension]

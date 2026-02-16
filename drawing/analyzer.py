@@ -39,6 +39,12 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
     page_image = base64.b64encode(pix.tobytes("png")).decode("ascii")
     page_rotation = page.rotation
 
+    # Render all pages as PNG images
+    page_images: list[str] = []
+    for pi in range(page_count):
+        px = doc[pi].get_pixmap(dpi=150)
+        page_images.append(base64.b64encode(px.tobytes("png")).decode("ascii"))
+
     # Step A: Extract primitives
     primitives = extract_page_primitives(page)
     diagnostics["text_count"] = len(primitives.texts)
@@ -108,6 +114,7 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         page_height=primitives.page_height,
         page_rotation=page_rotation,
         page_image=page_image,
+        page_images=page_images,
         views=views,
         grid_system=grid,
         dimensions=dimensions,
