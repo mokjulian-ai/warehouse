@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Drawing Analyzer</title>
+    <title>図面解析ツール</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -250,37 +250,37 @@
 </head>
 <body>
     <div class="container">
-        <h1>Drawing Analyzer <span>図面解析ツール</span></h1>
+        <h1>図面解析ツール</h1>
 
         <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
-            <p>Drop a PDF here or click to select</p>
-            <p class="hint">Supports AutoCAD-exported vector PDFs</p>
+            <p>PDFをここにドロップ、またはクリックして選択</p>
+            <p class="hint">AutoCAD出力のベクターPDFに対応</p>
             <div class="selected" id="selectedFile" style="display:none"></div>
             <input type="file" id="fileInput" accept=".pdf">
         </div>
 
         <div class="btn-row">
-            <button class="btn" id="analyzeBtn" onclick="analyzeDrawing()" disabled>Analyze</button>
+            <button class="btn" id="analyzeBtn" onclick="analyzeDrawing()" disabled>解析開始</button>
         </div>
 
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <span>Analyzing drawing...</span>
+            <span>図面を解析中...</span>
         </div>
 
         <div class="error-msg" id="errorMsg"></div>
 
         <div class="results" id="results">
             <div class="tab-bar" id="tabBar">
-                <button class="tab-btn active" onclick="switchTab('pdf')">PDF</button>
-                <button class="tab-btn" onclick="switchTab('texts')">Text List</button>
-                <button class="tab-btn" onclick="switchTab('grid')">Grid</button>
-                <button class="tab-btn" onclick="switchTab('dims')">Dimensions</button>
-                <button class="tab-btn" onclick="switchTab('heights')">Heights</button>
-                <button class="tab-btn" onclick="switchTab('matching')">Matching</button>
-                <button class="tab-btn" onclick="switchTab('structure')">Structure</button>
-                <button class="tab-btn" onclick="switchTab('quality')">Quality</button>
-                <button class="tab-btn" onclick="switchTab('json')">Raw JSON</button>
+                <button class="tab-btn active" onclick="switchTab('pdf')">PDF表示</button>
+                <button class="tab-btn" onclick="switchTab('texts')">テキスト一覧</button>
+                <button class="tab-btn" onclick="switchTab('grid')">通り芯</button>
+                <button class="tab-btn" onclick="switchTab('dims')">寸法</button>
+                <button class="tab-btn" onclick="switchTab('heights')">高さ</button>
+                <button class="tab-btn" onclick="switchTab('matching')">マッチング</button>
+                <button class="tab-btn" onclick="switchTab('structure')">構造モデル</button>
+                <button class="tab-btn" onclick="switchTab('quality')">品質チェック</button>
+                <button class="tab-btn" onclick="switchTab('json')">JSON</button>
             </div>
 
             <div class="tab-panel active" id="panel-pdf"></div>
@@ -314,7 +314,7 @@
 
         function handleFile(file) {
             if (!file.name.toLowerCase().endsWith(".pdf")) {
-                showError("Please select a PDF file.");
+                showError("PDFファイルを選択してください。");
                 return;
             }
             selectedFile = file;
@@ -353,7 +353,7 @@
                 renderResults(data);
                 document.getElementById("results").classList.add("active");
             } catch (err) {
-                showError("Request failed: " + err.message);
+                showError("リクエスト失敗: " + err.message);
             } finally {
                 loading.classList.remove("active");
                 btn.disabled = false;
@@ -396,9 +396,16 @@
         function renderPdfTab(data) {
             const panel = document.getElementById("panel-pdf");
             if (!data.page_image) {
-                panel.innerHTML = '<p style="color:#999">No PDF image available.</p>';
+                panel.innerHTML = '<p style="color:#999">PDF画像がありません。</p>';
                 return;
             }
+
+            var html = '<div style="background:#f8f9fa;border:1px solid #e5e7eb;border-radius:8px;padding:14px 18px;margin-bottom:16px;font-size:0.88rem;color:#555;line-height:1.7">'
+                + '<strong style="color:#333">Step A: ビュー領域検出</strong><br>'
+                + 'PDFをDPI=150でラスタ描画し、ベクターデータ（テキスト・線分・矩形）を PyMuPDF で抽出します。'
+                + '図面タイトル文字列（「屋根伏図」「平面図」「立面図」「断面図」等）を検索し、各タイトルの位置と周囲の線分から'
+                + 'ビュー領域の境界（BBox）を決定します。ページ回転（rotation=90/270）にも対応し、メディアボックス座標をビジュアル座標に変換して表示します。'
+                + '</div>';
 
             const views = data.views || [];
             const rot = data.page_rotation || 0;
@@ -444,7 +451,7 @@
             };
 
             // Legend
-            var html = '<div class="pdf-legend">';
+            html += '<div class="pdf-legend">';
             views.forEach(function(v) {
                 var c = colors[v.view_type] || colors["unknown"];
                 html += '<div class="pdf-legend-item">';
@@ -500,27 +507,28 @@
             const views = data.views || [];
 
             if (views.length === 0) {
-                panel.innerHTML = '<p style="color:#999">No views detected.</p>';
+                panel.innerHTML = '<p style="color:#999">ビューが検出されませんでした。</p>';
                 return;
             }
 
             var totalTexts = 0;
             views.forEach(function(v) { totalTexts += v.texts.length; });
 
-            let html = '<p style="margin-bottom:16px">Total: <strong>' + totalTexts + '</strong> texts across <strong>' + views.length + '</strong> views</p>';
+            let html = '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">PDFから抽出した全テキスト要素をビュー別に一覧表示します。フォント・サイズ・座標も確認できます。</p>';
+            html += '<p style="margin-bottom:16px">合計: <strong>' + views.length + '</strong> ビュー内に <strong>' + totalTexts + '</strong> テキスト</p>';
 
             views.forEach(function(v) {
                 var texts = v.texts || [];
                 html += '<h3 style="margin:20px 0 10px;color:#333;font-size:1rem">';
                 html += esc(v.view_type) + (v.title_text ? ' — ' + esc(v.title_text) : '');
-                html += ' <span style="color:#999;font-weight:400">(' + texts.length + ' texts)</span></h3>';
+                html += ' <span style="color:#999;font-weight:400">(' + texts.length + ' テキスト)</span></h3>';
 
                 if (texts.length === 0) {
-                    html += '<p style="color:#999;margin-bottom:16px">No text in this view.</p>';
+                    html += '<p style="color:#999;margin-bottom:16px">このビューにテキストはありません。</p>';
                     return;
                 }
 
-                html += '<table><tr><th>#</th><th>Text</th><th>Font</th><th>Size</th><th>Position (x, y)</th></tr>';
+                html += '<table><tr><th>#</th><th>テキスト</th><th>フォント</th><th>サイズ</th><th>位置 (x, y)</th></tr>';
                 texts.forEach(function(t, i) {
                     html += '<tr>';
                     html += '<td style="color:#999">' + (i + 1) + '</td>';
@@ -542,21 +550,22 @@
             const grid = data.grid_system;
 
             if (!grid) {
-                panel.innerHTML = '<p style="color:#999">No grid system detected.</p>';
+                panel.innerHTML = '<p style="color:#999">通り芯が検出されませんでした。</p>';
                 return;
             }
 
-            let html = '<p style="margin-bottom:16px">Source view: <strong>' + esc(grid.source_view) + '</strong></p>';
+            let html = '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">図面から検出した通り芯（X軸・Y軸）のラベル、位置、グリッド線の有無を表示します。</p>';
+            html += '<p style="margin-bottom:16px">検出元ビュー: <strong>' + esc(grid.source_view) + '</strong></p>';
 
             const allLabels = [].concat(grid.x_labels || [], grid.y_labels || []);
-            html += '<table><tr><th>Label</th><th>Axis</th><th>Index</th><th>Position (pts)</th><th>Has Line</th></tr>';
+            html += '<table><tr><th>ラベル</th><th>軸</th><th>インデックス</th><th>位置 (pts)</th><th>線あり</th></tr>';
             allLabels.forEach(function(l) {
                 html += '<tr>';
                 html += '<td><strong>' + esc(l.label) + '</strong></td>';
                 html += '<td>' + l.axis + '</td>';
                 html += '<td>' + l.index + '</td>';
                 html += '<td>' + l.position.toFixed(1) + '</td>';
-                html += '<td>' + (l.line ? '<span class="badge pass">Yes</span>' : '<span class="badge warn">No</span>') + '</td>';
+                html += '<td>' + (l.line ? '<span class="badge pass">あり</span>' : '<span class="badge warn">なし</span>') + '</td>';
                 html += '</tr>';
             });
             html += '</table>';
@@ -569,13 +578,14 @@
             const dims = data.dimensions || [];
 
             if (dims.length === 0) {
-                panel.innerHTML = '<p style="color:#999">No dimensions extracted.</p>';
+                panel.innerHTML = '<p style="color:#999">寸法が検出されませんでした。</p>';
                 return;
             }
 
             const sorted = dims.slice().sort(function(a, b) { return b.value - a.value; });
-            let html = '<p style="margin-bottom:16px">' + dims.length + ' dimensions extracted</p>';
-            html += '<table><tr><th>Value (mm)</th><th>Type</th><th>Count</th><th>Raw Text</th><th>View</th></tr>';
+            let html = '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">図面から抽出した寸法値の一覧です。単一寸法・ピッチ（@）・繰返し（×n）の3種別に分類されます。</p>';
+            html += '<p style="margin-bottom:16px">' + dims.length + ' 件の寸法を検出</p>';
+            html += '<table><tr><th>値 (mm)</th><th>種別</th><th>回数</th><th>原文</th><th>ビュー</th></tr>';
             sorted.forEach(function(d) {
                 html += '<tr>';
                 html += '<td><strong>' + d.value + '</strong></td>';
@@ -595,11 +605,12 @@
             const heights = data.heights || [];
 
             if (heights.length === 0) {
-                panel.innerHTML = '<p style="color:#999">No height parameters found.</p>';
+                panel.innerHTML = '<p style="color:#999">高さパラメータが検出されませんでした。</p>';
                 return;
             }
 
-            let html = '<table><tr><th>Type</th><th>Value (mm)</th><th>Raw Text</th><th>View</th></tr>';
+            let html = '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">立面図・断面図から検出した高さ情報（軒高・最高高さ・GL・FL等）を表示します。</p>';
+            html += '<table><tr><th>種別</th><th>値 (mm)</th><th>原文</th><th>ビュー</th></tr>';
             heights.forEach(function(h) {
                 html += '<tr>';
                 html += '<td><strong>' + esc(h.height_type) + '</strong></td>';
@@ -618,28 +629,30 @@
             const m = data.matching;
 
             if (!m) {
-                panel.innerHTML = '<p style="color:#999">No matching result (grid system required).</p>';
+                panel.innerHTML = '<p style="color:#999">マッチング結果がありません（通り芯が必要です）。</p>';
                 return;
             }
 
             let html = '';
 
+            html += '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">複数ビュー（平面・立面・断面）の寸法と通り芯を照合し、建物のスパン・桁行長さ・ピッチ・高さ等の主要パラメータを決定します。</p>';
+
             // Building parameters summary cards
-            html += '<h3 style="margin-bottom:12px;color:#333;font-size:1rem">Building Parameters</h3>';
+            html += '<h3 style="margin-bottom:12px;color:#333;font-size:1rem">建物パラメータ</h3>';
             html += '<div class="diag-grid">';
-            if (m.span != null) html += diagCard("Span (Y)", m.span.toLocaleString() + " mm");
-            if (m.length != null) html += diagCard("Length (X)", m.length.toLocaleString() + " mm");
-            if (m.bay_pitch != null) html += diagCard("Bay Pitch", m.bay_pitch.toLocaleString() + " mm");
-            if (m.bay_count != null) html += diagCard("Bay Count", m.bay_count);
-            if (m.eave_height != null) html += diagCard("Eave Height", m.eave_height.toLocaleString() + " mm");
-            if (m.max_height != null) html += diagCard("Max Height", m.max_height.toLocaleString() + " mm");
+            if (m.span != null) html += diagCard("スパン (Y)", m.span.toLocaleString() + " mm");
+            if (m.length != null) html += diagCard("桁行長さ (X)", m.length.toLocaleString() + " mm");
+            if (m.bay_pitch != null) html += diagCard("ベイピッチ", m.bay_pitch.toLocaleString() + " mm");
+            if (m.bay_count != null) html += diagCard("ベイ数", m.bay_count);
+            if (m.eave_height != null) html += diagCard("軒高", m.eave_height.toLocaleString() + " mm");
+            if (m.max_height != null) html += diagCard("最高高さ", m.max_height.toLocaleString() + " mm");
             html += '</div>';
 
             // Anchored params detail
             var anchored = m.anchored_params || [];
             if (anchored.length > 0) {
-                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Anchored Parameters</h3>';
-                html += '<table><tr><th>Name</th><th>Value</th><th>From</th><th>To</th><th>Source</th><th>Raw Text</th><th>Computed</th></tr>';
+                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">アンカーパラメータ</h3>';
+                html += '<table><tr><th>名称</th><th>値</th><th>始点</th><th>終点</th><th>検出元</th><th>原文</th><th>算出方法</th></tr>';
                 anchored.forEach(function(p) {
                     html += '<tr>';
                     html += '<td><strong>' + esc(p.name) + '</strong></td>';
@@ -648,7 +661,7 @@
                     html += '<td>' + (p.anchor_to || '-') + '</td>';
                     html += '<td>' + (p.source_view || '-') + '</td>';
                     html += '<td>' + esc(p.raw_text || '-') + '</td>';
-                    html += '<td>' + (p.computed ? '<span class="badge warn">computed</span>' : '<span class="badge pass">from text</span>') + '</td>';
+                    html += '<td>' + (p.computed ? '<span class="badge warn">算出値</span>' : '<span class="badge pass">図面値</span>') + '</td>';
                     html += '</tr>';
                 });
                 html += '</table>';
@@ -657,8 +670,8 @@
             // Per-view grid info
             var vgi = m.view_grid_info || [];
             if (vgi.length > 0) {
-                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Per-View Grid Labels</h3>';
-                html += '<table><tr><th>View</th><th>Type</th><th>Side</th><th>X Labels</th><th>Y Labels</th></tr>';
+                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">ビュー別通り芯ラベル</h3>';
+                html += '<table><tr><th>ビュー</th><th>種別</th><th>面</th><th>X ラベル</th><th>Y ラベル</th></tr>';
                 vgi.forEach(function(v) {
                     html += '<tr>';
                     html += '<td>' + esc(v.view_title) + '</td>';
@@ -674,8 +687,8 @@
             // Frame links
             var links = m.frame_links || [];
             if (links.length > 0) {
-                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Frame Links (X-Grid Across Views)</h3>';
-                html += '<table><tr><th>X Label</th><th>Plan Position (pts)</th><th>In Elevation Sides</th></tr>';
+                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">フレームリンク（ビュー間X通り芯）</h3>';
+                html += '<table><tr><th>X ラベル</th><th>平面位置 (pts)</th><th>立面での面</th></tr>';
                 links.forEach(function(fl) {
                     html += '<tr>';
                     html += '<td><strong>' + esc(fl.x_label) + '</strong></td>';
@@ -689,7 +702,7 @@
             // Consistency checks
             var checks = m.consistency_checks || [];
             if (checks.length > 0) {
-                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Consistency Checks</h3>';
+                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">整合性チェック</h3>';
                 var icons = { pass: "\u2705", warn: "\u26a0\ufe0f", fail: "\u274c" };
                 checks.forEach(function(c) {
                     html += '<div class="check-item">';
@@ -704,33 +717,36 @@
         }
 
         // --- Structure Tab ---
+        var typeNames = { column: "柱", rafter: "梁（ラフター）", ridge_beam: "棟木", purlin: "母屋" };
         function renderStructureTab(data) {
             const panel = document.getElementById("panel-structure");
             const sm = data.structural_model;
 
             if (!sm) {
-                panel.innerHTML = '<p style="color:#999">No structural model (matching result required).</p>';
+                panel.innerHTML = '<p style="color:#999">構造モデルがありません（マッチング結果が必要です）。</p>';
                 return;
             }
 
             var html = '';
 
+            html += '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">マッチング結果から生成した3D構造ワイヤフレームモデルです。柱・梁・棟木・母屋の部材を座標と長さ付きで表示します。</p>';
+
             // Envelope summary cards
-            html += '<h3 style="margin-bottom:12px;color:#333;font-size:1rem">Building Envelope</h3>';
+            html += '<h3 style="margin-bottom:12px;color:#333;font-size:1rem">建物外形</h3>';
             html += '<div class="diag-grid">';
-            html += diagCard("Length (X)", sm.envelope.length.toLocaleString() + " mm");
-            html += diagCard("Span (Y)", sm.envelope.span.toLocaleString() + " mm");
-            html += diagCard("Eave Height", sm.envelope.eave_height.toLocaleString() + " mm");
-            html += diagCard("Ridge Height", sm.envelope.ridge_height.toLocaleString() + " mm");
-            html += diagCard("Frames", sm.frame_count);
-            html += diagCard("Bays", sm.bay_count);
-            html += diagCard("Bay Pitch", sm.bay_pitch.toLocaleString() + " mm");
-            html += diagCard("Total Members", sm.members.length);
+            html += diagCard("桁行長さ (X)", sm.envelope.length.toLocaleString() + " mm");
+            html += diagCard("スパン (Y)", sm.envelope.span.toLocaleString() + " mm");
+            html += diagCard("軒高", sm.envelope.eave_height.toLocaleString() + " mm");
+            html += diagCard("棟高", sm.envelope.ridge_height.toLocaleString() + " mm");
+            html += diagCard("フレーム数", sm.frame_count);
+            html += diagCard("ベイ数", sm.bay_count);
+            html += diagCard("ベイピッチ", sm.bay_pitch.toLocaleString() + " mm");
+            html += diagCard("総部材数", sm.members.length);
             html += '</div>';
 
             // Member summary by type
-            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Member Summary</h3>';
-            html += '<table><tr><th>Type</th><th>Count</th><th>Unit Length (mm)</th><th>Total Length (m)</th></tr>';
+            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">部材集計</h3>';
+            html += '<table><tr><th>種別</th><th>本数</th><th>単位長さ (mm)</th><th>合計長さ (m)</th></tr>';
             var types = ["column", "rafter", "ridge_beam", "purlin"];
             types.forEach(function(t) {
                 var members = sm.members.filter(function(m) { return m.member_type === t; });
@@ -738,7 +754,7 @@
                 var totalLen = members.reduce(function(sum, m) { return sum + m.length; }, 0);
                 var unitLen = members[0].length;
                 html += '<tr>';
-                html += '<td><strong>' + t.replace(/_/g, ' ') + '</strong></td>';
+                html += '<td><strong>' + (typeNames[t] || t) + '</strong></td>';
                 html += '<td>' + members.length + '</td>';
                 html += '<td>' + unitLen.toFixed(0) + '</td>';
                 html += '<td>' + (totalLen / 1000).toFixed(1) + '</td>';
@@ -747,7 +763,7 @@
             // Total row
             var grandTotal = sm.members.reduce(function(sum, m) { return sum + m.length; }, 0);
             html += '<tr style="border-top:2px solid #333;font-weight:bold;background:#f0f0f0">';
-            html += '<td>Total</td>';
+            html += '<td>合計</td>';
             html += '<td>' + sm.members.length + '</td>';
             html += '<td>—</td>';
             html += '<td>' + (grandTotal / 1000).toFixed(1) + '</td>';
@@ -755,13 +771,13 @@
             html += '</table>';
 
             // Member detail table (first 100)
-            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Member Details</h3>';
+            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">部材詳細</h3>';
             var showMembers = sm.members.slice(0, 100);
-            html += '<table><tr><th>Label</th><th>Type</th><th>Start (x,y,z)</th><th>End (x,y,z)</th><th>Length (mm)</th><th>Frame</th></tr>';
+            html += '<table><tr><th>ラベル</th><th>種別</th><th>始点 (x,y,z)</th><th>終点 (x,y,z)</th><th>長さ (mm)</th><th>フレーム</th></tr>';
             showMembers.forEach(function(m) {
                 html += '<tr>';
                 html += '<td>' + esc(m.label) + '</td>';
-                html += '<td><span class="badge single">' + m.member_type.replace(/_/g, ' ') + '</span></td>';
+                html += '<td><span class="badge single">' + (typeNames[m.member_type] || m.member_type) + '</span></td>';
                 html += '<td>(' + m.start.x.toFixed(0) + ', ' + m.start.y.toFixed(0) + ', ' + m.start.z.toFixed(0) + ')</td>';
                 html += '<td>(' + m.end.x.toFixed(0) + ', ' + m.end.y.toFixed(0) + ', ' + m.end.z.toFixed(0) + ')</td>';
                 html += '<td>' + m.length.toFixed(0) + '</td>';
@@ -770,7 +786,7 @@
             });
             html += '</table>';
             if (sm.members.length > 100) {
-                html += '<p style="color:#999;margin-top:8px">Showing first 100 of ' + sm.members.length + ' members. See Raw JSON tab for full list.</p>';
+                html += '<p style="color:#999;margin-top:8px">' + sm.members.length + ' 部材のうち先頭100件を表示。全件はJSONタブを参照。</p>';
             }
 
             panel.innerHTML = html;
@@ -782,12 +798,13 @@
             const q = data.quality;
 
             if (!q) {
-                panel.innerHTML = '<p style="color:#999">No quality data.</p>';
+                panel.innerHTML = '<p style="color:#999">品質データがありません。</p>';
                 return;
             }
 
             const icons = { pass: "\u2705", warn: "\u26a0\ufe0f", fail: "\u274c" };
-            let html = '<div style="margin-bottom:20px">Overall: <span class="badge ' + q.overall + '">' + q.overall.toUpperCase() + '</span></div>';
+            let html = '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">抽出結果の品質ゲートチェックです。ビュー数・通り芯・寸法・高さの検出状況を判定します。</p>';
+            html += '<div style="margin-bottom:20px">総合判定: <span class="badge ' + q.overall + '">' + q.overall.toUpperCase() + '</span></div>';
 
             (q.checks || []).forEach(function(c) {
                 html += '<div class="check-item">';
@@ -804,7 +821,8 @@
         function renderJsonTab(data) {
             const panel = document.getElementById("panel-json");
             const json = JSON.stringify(data, null, 2);
-            panel.innerHTML = '<button class="copy-btn" onclick="copyJson()">Copy JSON</button>'
+            panel.innerHTML = '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">解析結果の全データをJSON形式で表示します。外部ツールへの連携やデバッグに利用できます。</p>'
+                + '<button class="copy-btn" onclick="copyJson()">JSONをコピー</button>'
                 + '<div class="json-block" id="jsonBlock">' + esc(json) + '</div>';
         }
 
@@ -812,8 +830,8 @@
             const text = JSON.stringify(analysisData, null, 2);
             navigator.clipboard.writeText(text).then(function() {
                 const btn = document.querySelector(".copy-btn");
-                btn.textContent = "Copied!";
-                setTimeout(function() { btn.textContent = "Copy JSON"; }, 1500);
+                btn.textContent = "コピーしました";
+                setTimeout(function() { btn.textContent = "JSONをコピー"; }, 1500);
             });
         }
 
