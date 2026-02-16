@@ -273,7 +273,7 @@
         <div class="results" id="results">
             <div class="tab-bar" id="tabBar">
                 <button class="tab-btn active" onclick="switchTab('pdf')">PDF</button>
-                <button class="tab-btn" onclick="switchTab('views')">Views</button>
+                <button class="tab-btn" onclick="switchTab('texts')">Text List</button>
                 <button class="tab-btn" onclick="switchTab('grid')">Grid</button>
                 <button class="tab-btn" onclick="switchTab('dims')">Dimensions</button>
                 <button class="tab-btn" onclick="switchTab('heights')">Heights</button>
@@ -282,7 +282,7 @@
             </div>
 
             <div class="tab-panel active" id="panel-pdf"></div>
-            <div class="tab-panel" id="panel-views"></div>
+            <div class="tab-panel" id="panel-texts"></div>
             <div class="tab-panel" id="panel-grid"></div>
             <div class="tab-panel" id="panel-dims"></div>
             <div class="tab-panel" id="panel-heights"></div>
@@ -367,7 +367,7 @@
         function switchTab(name) {
             document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
             document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-            const tabs = ["pdf", "views", "grid", "dims", "heights", "quality", "json"];
+            const tabs = ["pdf", "texts", "grid", "dims", "heights", "quality", "json"];
             const idx = tabs.indexOf(name);
             if (idx >= 0) {
                 document.querySelectorAll(".tab-btn")[idx].classList.add("active");
@@ -378,7 +378,7 @@
         // --- Render results ---
         function renderResults(data) {
             renderPdfTab(data);
-            renderViewsTab(data);
+            renderTextListTab(data);
             renderGridTab(data);
             renderDimsTab(data);
             renderHeightsTab(data);
@@ -488,62 +488,45 @@
             panel.innerHTML = html;
         }
 
-        // --- Views Tab ---
-        function renderViewsTab(data) {
-            const panel = document.getElementById("panel-views");
+        // --- Text List Tab ---
+        function renderTextListTab(data) {
+            const panel = document.getElementById("panel-texts");
             const views = data.views || [];
-            const pw = data.page_width, ph = data.page_height;
-
-            // Diagnostics summary
-            const d = data.diagnostics || {};
-            let html = '<div class="diag-grid">';
-            html += diagCard("Texts", d.text_count || 0);
-            html += diagCard("Lines", d.line_count || 0);
-            html += diagCard("Rects", d.rect_count || 0);
-            html += diagCard("Views", views.length);
-            html += '</div>';
 
             if (views.length === 0) {
-                html += '<p style="color:#999">No views detected.</p>';
-                panel.innerHTML = html;
+                panel.innerHTML = '<p style="color:#999">No views detected.</p>';
                 return;
             }
 
-            // SVG visualization
-            const colors = { "\u5c4b\u6839\u4f0f\u56f3": "#ef4444", "\u5e73\u9762\u56f3": "#3b82f6", "\u7acb\u9762\u56f3": "#22c55e", "\u65ad\u9762\u56f3": "#f59e0b", "unknown": "#9ca3af" };
-            const svgW = 800, svgH = (ph / pw) * svgW;
-            const sx = svgW / pw, sy = svgH / ph;
+            var totalTexts = 0;
+            views.forEach(function(v) { totalTexts += v.texts.length; });
 
-            html += '<div class="svg-container">';
-            html += '<svg width="' + svgW + '" height="' + svgH + '" viewBox="0 0 ' + svgW + ' ' + svgH + '">';
-            html += '<rect x="0" y="0" width="' + svgW + '" height="' + svgH + '" fill="#fafafa" stroke="#ccc"/>';
+            let html = '<p style="margin-bottom:16px">Total: <strong>' + totalTexts + '</strong> texts across <strong>' + views.length + '</strong> views</p>';
 
             views.forEach(function(v) {
-                var r = v.region;
-                var color = colors[v.view_type] || "#9ca3af";
-                var x = r.x0 * sx, y = r.y0 * sy;
-                var w = (r.x1 - r.x0) * sx, h = (r.y1 - r.y0) * sy;
-                html += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + color + '" fill-opacity="0.15" stroke="' + color + '" stroke-width="2"/>';
-                html += '<text x="' + (x + 8) + '" y="' + (y + 20) + '" fill="' + color + '" font-size="14" font-weight="bold">' + v.view_type + (v.scale ? ' (S=' + v.scale + ')' : '') + '</text>';
-                html += '<text x="' + (x + 8) + '" y="' + (y + 38) + '" fill="#888" font-size="11">' + v.texts.length + ' texts, ' + v.lines.length + ' lines</text>';
+                var texts = v.texts || [];
+                html += '<h3 style="margin:20px 0 10px;color:#333;font-size:1rem">';
+                html += esc(v.view_type) + (v.title_text ? ' — ' + esc(v.title_text) : '');
+                html += ' <span style="color:#999;font-weight:400">(' + texts.length + ' texts)</span></h3>';
+
+                if (texts.length === 0) {
+                    html += '<p style="color:#999;margin-bottom:16px">No text in this view.</p>';
+                    return;
+                }
+
+                html += '<table><tr><th>#</th><th>Text</th><th>Font</th><th>Size</th><th>Position (x, y)</th></tr>';
+                texts.forEach(function(t, i) {
+                    html += '<tr>';
+                    html += '<td style="color:#999">' + (i + 1) + '</td>';
+                    html += '<td>' + esc(t.text) + '</td>';
+                    html += '<td style="font-size:0.8rem;color:#666">' + esc(t.font) + '</td>';
+                    html += '<td style="font-size:0.8rem;color:#666">' + (t.size > 0 ? t.size.toFixed(1) : '-') + '</td>';
+                    html += '<td style="font-size:0.8rem;color:#999">(' + t.center.x.toFixed(0) + ', ' + t.center.y.toFixed(0) + ')</td>';
+                    html += '</tr>';
+                });
+                html += '</table>';
             });
 
-            html += '</svg></div>';
-
-            // View list table
-            html += '<table><tr><th>View</th><th>Title Text</th><th>Scale</th><th>Texts</th><th>Lines</th><th>Region</th></tr>';
-            views.forEach(function(v) {
-                var r = v.region;
-                html += '<tr>';
-                html += '<td><strong>' + esc(v.view_type) + '</strong></td>';
-                html += '<td>' + esc(v.title_text) + '</td>';
-                html += '<td>' + (v.scale || '-') + '</td>';
-                html += '<td>' + v.texts.length + '</td>';
-                html += '<td>' + v.lines.length + '</td>';
-                html += '<td style="font-size:0.8rem;color:#999">(' + r.x0.toFixed(0) + ', ' + r.y0.toFixed(0) + ') - (' + r.x1.toFixed(0) + ', ' + r.y1.toFixed(0) + ')</td>';
-                html += '</tr>';
-            });
-            html += '</table>';
             panel.innerHTML = html;
         }
 

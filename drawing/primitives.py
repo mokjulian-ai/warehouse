@@ -66,27 +66,13 @@ def _extract_shx_annotations(page: fitz.Page) -> list[TextSpan]:
     if not annots:
         return spans
 
-    # Layer-name annotations are clustered at a tiny spot — filter them out.
-    # They have titles like 'AutoCAD SHX Text' but content like 'DASHED2_3', 'LINE_1', etc.
-    layer_keywords = {
-        "DASHED", "CENTER", "PHANTOM", "ZUWAKU", "LINE_", "MOJI",
-        "NOTE_", "KIJUN", "SUNPO", "HIDDEN", "README",
-    }
-
     for annot in annots:
         info = annot.info
         content = info.get("content", "").strip()
-        if not content or content in (" ", "/", "\u2010"):
+        if not content:
             continue
 
-        # Skip AutoCAD layer name entries (small bbox, internal naming)
-        if any(kw in content for kw in layer_keywords):
-            continue
-        # Also skip Japanese layer names clustered at origin
         rect = annot.rect
-        if rect.width < 10 and rect.height < 10 and rect.x0 < 30 and rect.y0 < 40:
-            continue
-
         bbox = BBox(x0=rect.x0, y0=rect.y0, x1=rect.x1, y1=rect.y1)
         spans.append(TextSpan(
             text=content,
