@@ -254,6 +254,57 @@ class MatchingResult(BaseModel):
     max_height: float | None = None
 
 
+# --- Step 3: 3D Structural Reconstruction ---
+
+
+class MemberType(str, Enum):
+    COLUMN = "column"
+    RAFTER = "rafter"
+    RIDGE_BEAM = "ridge_beam"
+    PURLIN = "purlin"
+
+
+class Point3D(BaseModel):
+    """A point in the 3D building coordinate system (mm)."""
+
+    x: float  # Longitudinal (building length direction)
+    y: float  # Transverse (span direction)
+    z: float  # Vertical (height)
+
+
+class Member3D(BaseModel):
+    """A structural member defined by two 3D endpoints."""
+
+    member_type: MemberType
+    label: str = ""
+    start: Point3D
+    end: Point3D
+    length: float  # True 3D length in mm
+    frame_index: int | None = None  # None for purlins/ridge beam
+
+
+class BuildingEnvelope(BaseModel):
+    """Bounding dimensions of the building."""
+
+    length: float
+    span: float
+    eave_height: float
+    ridge_height: float
+
+
+class StructuralModel(BaseModel):
+    """Step 3 output: 3D structural wireframe model."""
+
+    members: list[Member3D]
+    envelope: BuildingEnvelope
+    frame_count: int
+    bay_count: int
+    bay_pitch: float
+    x_grid_positions: list[float]
+    y_grid_positions: list[float]
+    member_summary: dict[str, int] = Field(default_factory=dict)
+
+
 # --- Final Output (Step G) ---
 
 
@@ -270,4 +321,5 @@ class AnalysisResult(BaseModel):
     heights: list[HeightParam]
     quality: QualityReport
     matching: MatchingResult | None = None
+    structural_model: StructuralModel | None = None
     diagnostics: dict = Field(default_factory=dict)

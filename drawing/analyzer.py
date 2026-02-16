@@ -8,6 +8,7 @@ from .dimensions import extract_dimensions
 from .grids import extract_grid_system
 from .heights import extract_heights
 from .matching import run_matching
+from .reconstruction import reconstruct_3d
 from .models import AnalysisResult, GateStatus, QualityCheck, QualityReport
 from .primitives import extract_page_primitives
 from .quality import run_quality_gates
@@ -78,6 +79,15 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         diagnostics["matching_eave_height"] = matching.eave_height
         diagnostics["matching_max_height"] = matching.max_height
 
+    # Step 3: 3D Structural Reconstruction
+    structural_model = None
+    if matching:
+        structural_model = reconstruct_3d(matching, grid)
+        if structural_model:
+            diagnostics["structural_member_count"] = len(structural_model.members)
+            diagnostics["structural_frame_count"] = structural_model.frame_count
+            diagnostics["structural_member_summary"] = structural_model.member_summary
+
     doc.close()
 
     # Step G: Assemble result
@@ -94,5 +104,6 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         heights=heights,
         quality=quality,
         matching=matching,
+        structural_model=structural_model,
         diagnostics=diagnostics,
     )

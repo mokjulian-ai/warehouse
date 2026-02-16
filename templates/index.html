@@ -278,6 +278,7 @@
                 <button class="tab-btn" onclick="switchTab('dims')">Dimensions</button>
                 <button class="tab-btn" onclick="switchTab('heights')">Heights</button>
                 <button class="tab-btn" onclick="switchTab('matching')">Matching</button>
+                <button class="tab-btn" onclick="switchTab('structure')">Structure</button>
                 <button class="tab-btn" onclick="switchTab('quality')">Quality</button>
                 <button class="tab-btn" onclick="switchTab('json')">Raw JSON</button>
             </div>
@@ -288,6 +289,7 @@
             <div class="tab-panel" id="panel-dims"></div>
             <div class="tab-panel" id="panel-heights"></div>
             <div class="tab-panel" id="panel-matching"></div>
+            <div class="tab-panel" id="panel-structure"></div>
             <div class="tab-panel" id="panel-quality"></div>
             <div class="tab-panel" id="panel-json"></div>
         </div>
@@ -369,7 +371,7 @@
         function switchTab(name) {
             document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
             document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-            const tabs = ["pdf", "texts", "grid", "dims", "heights", "matching", "quality", "json"];
+            const tabs = ["pdf", "texts", "grid", "dims", "heights", "matching", "structure", "quality", "json"];
             const idx = tabs.indexOf(name);
             if (idx >= 0) {
                 document.querySelectorAll(".tab-btn")[idx].classList.add("active");
@@ -385,6 +387,7 @@
             renderDimsTab(data);
             renderHeightsTab(data);
             renderMatchingTab(data);
+            renderStructureTab(data);
             renderQualityTab(data);
             renderJsonTab(data);
         }
@@ -695,6 +698,79 @@
                     html += '<span class="check-msg">' + esc(c.message) + '</span>';
                     html += '</div>';
                 });
+            }
+
+            panel.innerHTML = html;
+        }
+
+        // --- Structure Tab ---
+        function renderStructureTab(data) {
+            const panel = document.getElementById("panel-structure");
+            const sm = data.structural_model;
+
+            if (!sm) {
+                panel.innerHTML = '<p style="color:#999">No structural model (matching result required).</p>';
+                return;
+            }
+
+            var html = '';
+
+            // Envelope summary cards
+            html += '<h3 style="margin-bottom:12px;color:#333;font-size:1rem">Building Envelope</h3>';
+            html += '<div class="diag-grid">';
+            html += diagCard("Length (X)", sm.envelope.length.toLocaleString() + " mm");
+            html += diagCard("Span (Y)", sm.envelope.span.toLocaleString() + " mm");
+            html += diagCard("Eave Height", sm.envelope.eave_height.toLocaleString() + " mm");
+            html += diagCard("Ridge Height", sm.envelope.ridge_height.toLocaleString() + " mm");
+            html += diagCard("Frames", sm.frame_count);
+            html += diagCard("Bays", sm.bay_count);
+            html += diagCard("Bay Pitch", sm.bay_pitch.toLocaleString() + " mm");
+            html += diagCard("Total Members", sm.members.length);
+            html += '</div>';
+
+            // Member summary by type
+            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Member Summary</h3>';
+            html += '<table><tr><th>Type</th><th>Count</th><th>Unit Length (mm)</th><th>Total Length (m)</th></tr>';
+            var types = ["column", "rafter", "ridge_beam", "purlin"];
+            types.forEach(function(t) {
+                var members = sm.members.filter(function(m) { return m.member_type === t; });
+                if (members.length === 0) return;
+                var totalLen = members.reduce(function(sum, m) { return sum + m.length; }, 0);
+                var unitLen = members[0].length;
+                html += '<tr>';
+                html += '<td><strong>' + t.replace(/_/g, ' ') + '</strong></td>';
+                html += '<td>' + members.length + '</td>';
+                html += '<td>' + unitLen.toFixed(0) + '</td>';
+                html += '<td>' + (totalLen / 1000).toFixed(1) + '</td>';
+                html += '</tr>';
+            });
+            // Total row
+            var grandTotal = sm.members.reduce(function(sum, m) { return sum + m.length; }, 0);
+            html += '<tr style="border-top:2px solid #333;font-weight:bold;background:#f0f0f0">';
+            html += '<td>Total</td>';
+            html += '<td>' + sm.members.length + '</td>';
+            html += '<td>—</td>';
+            html += '<td>' + (grandTotal / 1000).toFixed(1) + '</td>';
+            html += '</tr>';
+            html += '</table>';
+
+            // Member detail table (first 100)
+            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Member Details</h3>';
+            var showMembers = sm.members.slice(0, 100);
+            html += '<table><tr><th>Label</th><th>Type</th><th>Start (x,y,z)</th><th>End (x,y,z)</th><th>Length (mm)</th><th>Frame</th></tr>';
+            showMembers.forEach(function(m) {
+                html += '<tr>';
+                html += '<td>' + esc(m.label) + '</td>';
+                html += '<td><span class="badge single">' + m.member_type.replace(/_/g, ' ') + '</span></td>';
+                html += '<td>(' + m.start.x.toFixed(0) + ', ' + m.start.y.toFixed(0) + ', ' + m.start.z.toFixed(0) + ')</td>';
+                html += '<td>(' + m.end.x.toFixed(0) + ', ' + m.end.y.toFixed(0) + ', ' + m.end.z.toFixed(0) + ')</td>';
+                html += '<td>' + m.length.toFixed(0) + '</td>';
+                html += '<td>' + (m.frame_index !== null ? m.frame_index : '-') + '</td>';
+                html += '</tr>';
+            });
+            html += '</table>';
+            if (sm.members.length > 100) {
+                html += '<p style="color:#999;margin-top:8px">Showing first 100 of ' + sm.members.length + ' members. See Raw JSON tab for full list.</p>';
             }
 
             panel.innerHTML = html;
