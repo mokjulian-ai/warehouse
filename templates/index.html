@@ -967,9 +967,17 @@
         }
 
         // --- 小屋伏図 View Tab ---
+        // Color palette for member labels
+        var memberColors = {
+            "1": "#e53e3e", "2": "#dd6b20", "3": "#d69e2e", "4": "#38a169",
+            "5": "#319795", "6": "#3182ce", "7": "#805ad5", "8": "#d53f8c",
+            "9": "#e53e3e", "10": "#dd6b20", "11": "#38a169", "12": "#3182ce"
+        };
+
         function renderKoyafuseViewTab(data) {
             var panel = document.getElementById("panel-koyafuse-view");
             var images = data.page_images || [];
+            var kf = data.koyafuse;
 
             if (images.length < 2) {
                 panel.innerHTML = '<p style="color:#999">小屋伏図ページ（2ページ目）がありません。複数ページのPDFをアップロードしてください。</p>';
@@ -977,27 +985,69 @@
             }
 
             var html = '';
-            html += '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">';
-            html += 'PDFの2ページ目（小屋伏図）を表示します。部材番号と引出線から各部材の配置を確認できます。';
+            html += '<p style="color:#666;margin-bottom:12px;font-size:0.9rem">';
+            html += '小屋伏図に検出した部材ラベルを引出線先端位置に表示します。';
             html += '</p>';
 
-            // Page selector if more than 2 pages
-            if (images.length > 2) {
-                html += '<div style="margin-bottom:16px">';
-                html += '<label style="color:#555;font-size:0.9rem;margin-right:8px">ページ選択:</label>';
-                html += '<select id="koyafusePageSelect" onchange="updateKoyafuseImage()" style="padding:6px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:0.9rem">';
-                for (var i = 1; i < images.length; i++) {
-                    html += '<option value="' + i + '"' + (i === 1 ? ' selected' : '') + '>ページ ' + (i + 1) + '</option>';
-                }
-                html += '</select>';
-                html += '</div>';
-            }
-
-            html += '<div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:16px;overflow:auto">';
-            html += '<img id="koyafuseImg" src="data:image/png;base64,' + images[1] + '" alt="小屋伏図" style="max-width:100%;height:auto;display:block">';
+            // Toggle button for overlay
+            html += '<div style="margin-bottom:12px;display:flex;align-items:center;gap:12px">';
+            html += '<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.9rem;color:#555">';
+            html += '<input type="checkbox" id="toggleOverlay" checked onchange="toggleKoyafuseOverlay()">';
+            html += 'ラベル表示';
+            html += '</label>';
             html += '</div>';
 
+            // Image container with overlay
+            html += '<div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:16px;overflow:auto">';
+            html += '<div id="koyafuseContainer" style="position:relative;display:inline-block">';
+            html += '<img id="koyafuseImg" src="data:image/png;base64,' + images[1] + '" alt="小屋伏図" style="max-width:100%;height:auto;display:block">';
+
+            // Overlay markers at each leader tip
+            if (kf && kf.detected_members && kf.mediabox_width > 0) {
+                var mw = kf.mediabox_width;
+                var pvw = kf.page_visual_width;
+                var pvh = kf.page_visual_height;
+
+                kf.detected_members.forEach(function(m) {
+                    var tips = m.leader_tips || [];
+                    var color = memberColors[m.member_number] || "#666";
+
+                    tips.forEach(function(tip) {
+                        // _to_visual coords are already page rect coords
+                        var leftPct = tip.x / pvw * 100;
+                        var topPct = tip.y / pvh * 100;
+
+                        html += '<div class="kf-marker" style="';
+                        html += 'position:absolute;';
+                        html += 'left:' + leftPct.toFixed(2) + '%;';
+                        html += 'top:' + topPct.toFixed(2) + '%;';
+                        html += 'transform:translate(-50%,-50%);';
+                        html += 'background:' + color + ';';
+                        html += 'color:#fff;';
+                        html += 'font-size:9px;';
+                        html += 'font-weight:bold;';
+                        html += 'padding:1px 4px;';
+                        html += 'border-radius:3px;';
+                        html += 'white-space:nowrap;';
+                        html += 'pointer-events:none;';
+                        html += 'opacity:0.85;';
+                        html += 'line-height:1.3;';
+                        html += '">' + esc(m.label) + '</div>';
+                    });
+                });
+            }
+
+            html += '</div></div>';
+
             panel.innerHTML = html;
+        }
+
+        function toggleKoyafuseOverlay() {
+            var checked = document.getElementById("toggleOverlay").checked;
+            var markers = document.querySelectorAll(".kf-marker");
+            markers.forEach(function(el) {
+                el.style.display = checked ? "" : "none";
+            });
         }
 
         function updateKoyafuseImage() {

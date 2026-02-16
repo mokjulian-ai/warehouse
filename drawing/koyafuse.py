@@ -60,6 +60,9 @@ def detect_koyafuse_members(doc: fitz.Document) -> KoyafuseResult | None:
         scale=scale,
         detected_members=detected,
         drawing_bbox=drawing_bbox,
+        mediabox_width=mw,
+        page_visual_width=page.rect.width,
+        page_visual_height=page.rect.height,
     )
 
 
