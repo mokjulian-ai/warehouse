@@ -277,6 +277,7 @@
                 <button class="tab-btn" onclick="switchTab('grid')">Grid</button>
                 <button class="tab-btn" onclick="switchTab('dims')">Dimensions</button>
                 <button class="tab-btn" onclick="switchTab('heights')">Heights</button>
+                <button class="tab-btn" onclick="switchTab('matching')">Matching</button>
                 <button class="tab-btn" onclick="switchTab('quality')">Quality</button>
                 <button class="tab-btn" onclick="switchTab('json')">Raw JSON</button>
             </div>
@@ -286,6 +287,7 @@
             <div class="tab-panel" id="panel-grid"></div>
             <div class="tab-panel" id="panel-dims"></div>
             <div class="tab-panel" id="panel-heights"></div>
+            <div class="tab-panel" id="panel-matching"></div>
             <div class="tab-panel" id="panel-quality"></div>
             <div class="tab-panel" id="panel-json"></div>
         </div>
@@ -367,7 +369,7 @@
         function switchTab(name) {
             document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
             document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-            const tabs = ["pdf", "texts", "grid", "dims", "heights", "quality", "json"];
+            const tabs = ["pdf", "texts", "grid", "dims", "heights", "matching", "quality", "json"];
             const idx = tabs.indexOf(name);
             if (idx >= 0) {
                 document.querySelectorAll(".tab-btn")[idx].classList.add("active");
@@ -382,6 +384,7 @@
             renderGridTab(data);
             renderDimsTab(data);
             renderHeightsTab(data);
+            renderMatchingTab(data);
             renderQualityTab(data);
             renderJsonTab(data);
         }
@@ -603,6 +606,97 @@
                 html += '</tr>';
             });
             html += '</table>';
+            panel.innerHTML = html;
+        }
+
+        // --- Matching Tab (Step 2) ---
+        function renderMatchingTab(data) {
+            const panel = document.getElementById("panel-matching");
+            const m = data.matching;
+
+            if (!m) {
+                panel.innerHTML = '<p style="color:#999">No matching result (grid system required).</p>';
+                return;
+            }
+
+            let html = '';
+
+            // Building parameters summary cards
+            html += '<h3 style="margin-bottom:12px;color:#333;font-size:1rem">Building Parameters</h3>';
+            html += '<div class="diag-grid">';
+            if (m.span != null) html += diagCard("Span (Y)", m.span.toLocaleString() + " mm");
+            if (m.length != null) html += diagCard("Length (X)", m.length.toLocaleString() + " mm");
+            if (m.bay_pitch != null) html += diagCard("Bay Pitch", m.bay_pitch.toLocaleString() + " mm");
+            if (m.bay_count != null) html += diagCard("Bay Count", m.bay_count);
+            if (m.eave_height != null) html += diagCard("Eave Height", m.eave_height.toLocaleString() + " mm");
+            if (m.max_height != null) html += diagCard("Max Height", m.max_height.toLocaleString() + " mm");
+            html += '</div>';
+
+            // Anchored params detail
+            var anchored = m.anchored_params || [];
+            if (anchored.length > 0) {
+                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Anchored Parameters</h3>';
+                html += '<table><tr><th>Name</th><th>Value</th><th>From</th><th>To</th><th>Source</th><th>Raw Text</th><th>Computed</th></tr>';
+                anchored.forEach(function(p) {
+                    html += '<tr>';
+                    html += '<td><strong>' + esc(p.name) + '</strong></td>';
+                    html += '<td>' + p.value.toLocaleString() + ' ' + esc(p.unit) + '</td>';
+                    html += '<td>' + (p.anchor_from || '-') + '</td>';
+                    html += '<td>' + (p.anchor_to || '-') + '</td>';
+                    html += '<td>' + (p.source_view || '-') + '</td>';
+                    html += '<td>' + esc(p.raw_text || '-') + '</td>';
+                    html += '<td>' + (p.computed ? '<span class="badge warn">computed</span>' : '<span class="badge pass">from text</span>') + '</td>';
+                    html += '</tr>';
+                });
+                html += '</table>';
+            }
+
+            // Per-view grid info
+            var vgi = m.view_grid_info || [];
+            if (vgi.length > 0) {
+                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Per-View Grid Labels</h3>';
+                html += '<table><tr><th>View</th><th>Type</th><th>Side</th><th>X Labels</th><th>Y Labels</th></tr>';
+                vgi.forEach(function(v) {
+                    html += '<tr>';
+                    html += '<td>' + esc(v.view_title) + '</td>';
+                    html += '<td>' + esc(v.view_type) + '</td>';
+                    html += '<td>' + (v.grid_side || '-') + '</td>';
+                    html += '<td>' + (v.x_labels.length > 0 ? v.x_labels.join(', ') : '-') + '</td>';
+                    html += '<td>' + (v.y_labels.length > 0 ? v.y_labels.join(', ') : '-') + '</td>';
+                    html += '</tr>';
+                });
+                html += '</table>';
+            }
+
+            // Frame links
+            var links = m.frame_links || [];
+            if (links.length > 0) {
+                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Frame Links (X-Grid Across Views)</h3>';
+                html += '<table><tr><th>X Label</th><th>Plan Position (pts)</th><th>In Elevation Sides</th></tr>';
+                links.forEach(function(fl) {
+                    html += '<tr>';
+                    html += '<td><strong>' + esc(fl.x_label) + '</strong></td>';
+                    html += '<td>' + (fl.plan_x_position != null ? fl.plan_x_position.toFixed(1) : '-') + '</td>';
+                    html += '<td>' + (fl.in_elevation_sides.length > 0 ? fl.in_elevation_sides.join(', ') : '<span style="color:#999">none</span>') + '</td>';
+                    html += '</tr>';
+                });
+                html += '</table>';
+            }
+
+            // Consistency checks
+            var checks = m.consistency_checks || [];
+            if (checks.length > 0) {
+                html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Consistency Checks</h3>';
+                var icons = { pass: "\u2705", warn: "\u26a0\ufe0f", fail: "\u274c" };
+                checks.forEach(function(c) {
+                    html += '<div class="check-item">';
+                    html += '<span class="check-icon">' + (icons[c.status] || '') + '</span>';
+                    html += '<span class="check-name">' + esc(c.name) + '</span>';
+                    html += '<span class="check-msg">' + esc(c.message) + '</span>';
+                    html += '</div>';
+                });
+            }
+
             panel.innerHTML = html;
         }
 

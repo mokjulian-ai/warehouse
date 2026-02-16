@@ -203,6 +203,57 @@ class QualityReport(BaseModel):
     checks: list[QualityCheck]
 
 
+# --- Step 2: Cross-View Matching ---
+
+
+class ViewGridInfo(BaseModel):
+    """Grid labels detected in a specific view."""
+
+    view_index: int
+    view_type: ViewType
+    view_title: str
+    grid_side: str | None = None  # For elevations: "Y1", "Y2", etc.
+    x_labels: list[str] = Field(default_factory=list)
+    y_labels: list[str] = Field(default_factory=list)
+
+
+class FrameLink(BaseModel):
+    """Cross-view link for one X-grid position."""
+
+    x_label: str
+    plan_x_position: float | None = None
+    in_elevation_sides: list[str] = Field(default_factory=list)
+
+
+class AnchoredParam(BaseModel):
+    """A building parameter anchored to grid positions."""
+
+    name: str
+    value: float
+    unit: str = "mm"
+    anchor_from: str | None = None
+    anchor_to: str | None = None
+    source_view: ViewType | None = None
+    raw_text: str = ""
+    computed: bool = False  # True if computed from grid, not from dimension text
+
+
+class MatchingResult(BaseModel):
+    """Step 2 output: cross-view matching results."""
+
+    canonical_grid_source: ViewType
+    view_grid_info: list[ViewGridInfo]
+    frame_links: list[FrameLink]
+    anchored_params: list[AnchoredParam]
+    consistency_checks: list[QualityCheck]
+    span: float | None = None
+    length: float | None = None
+    bay_pitch: float | None = None
+    bay_count: int | None = None
+    eave_height: float | None = None
+    max_height: float | None = None
+
+
 # --- Final Output (Step G) ---
 
 
@@ -218,4 +269,5 @@ class AnalysisResult(BaseModel):
     dimensions: list[Dimension]
     heights: list[HeightParam]
     quality: QualityReport
+    matching: MatchingResult | None = None
     diagnostics: dict = Field(default_factory=dict)

@@ -7,6 +7,7 @@ import fitz
 from .dimensions import extract_dimensions
 from .grids import extract_grid_system
 from .heights import extract_heights
+from .matching import run_matching
 from .models import AnalysisResult, GateStatus, QualityCheck, QualityReport
 from .primitives import extract_page_primitives
 from .quality import run_quality_gates
@@ -47,7 +48,7 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
     diagnostics["views_found"] = [v.view_type.value for v in views]
 
     # Step C: Extract grid system
-    grid = extract_grid_system(views)
+    grid = extract_grid_system(views, page_rotation=page_rotation)
     if grid:
         diagnostics["grid_x_labels"] = [l.label for l in grid.x_labels]
         diagnostics["grid_y_labels"] = [l.label for l in grid.y_labels]
@@ -67,6 +68,16 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
     # Step F: Quality gates
     quality = run_quality_gates(views, grid, dimensions, heights)
 
+    # Step 2: Cross-view matching
+    matching = run_matching(views, grid, dimensions, heights, page_rotation=page_rotation)
+    if matching:
+        diagnostics["matching_span"] = matching.span
+        diagnostics["matching_length"] = matching.length
+        diagnostics["matching_pitch"] = matching.bay_pitch
+        diagnostics["matching_bay_count"] = matching.bay_count
+        diagnostics["matching_eave_height"] = matching.eave_height
+        diagnostics["matching_max_height"] = matching.max_height
+
     doc.close()
 
     # Step G: Assemble result
@@ -82,5 +93,6 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         dimensions=dimensions,
         heights=heights,
         quality=quality,
+        matching=matching,
         diagnostics=diagnostics,
     )

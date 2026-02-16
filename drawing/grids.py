@@ -17,7 +17,23 @@ GRID_SYMBOLIC_PATTERN = re.compile(
 MIN_GRID_LINE_LENGTH = 50.0
 
 
-def extract_grid_system(views: list[View]) -> GridSystem | None:
+def extract_per_view_grids(
+    views: list[View],
+    page_rotation: int = 0,
+) -> dict[int, tuple[list[GridLabel], list[GridLabel]]]:
+    """Extract grid labels per view. Returns {view_index: (x_labels, y_labels)}."""
+    result: dict[int, tuple[list[GridLabel], list[GridLabel]]] = {}
+    for i, view in enumerate(views):
+        x_labels, y_labels = _extract_from_view(view, page_rotation)
+        if x_labels or y_labels:
+            result[i] = (x_labels, y_labels)
+    return result
+
+
+def extract_grid_system(
+    views: list[View],
+    page_rotation: int = 0,
+) -> GridSystem | None:
     """Extract grid from views. Merges results from all matching views."""
     # Collect labels from priority views
     priority = [ViewType.FLOOR_PLAN, ViewType.ELEVATION]
@@ -29,7 +45,7 @@ def extract_grid_system(views: list[View]) -> GridSystem | None:
     for target_type in priority:
         for view in views:
             if view.view_type == target_type:
-                x_labels, y_labels = _extract_from_view(view)
+                x_labels, y_labels = _extract_from_view(view, page_rotation)
                 if x_labels or y_labels:
                     if source_view == ViewType.UNKNOWN:
                         source_view = view.view_type
@@ -39,7 +55,7 @@ def extract_grid_system(views: list[View]) -> GridSystem | None:
     # Fallback to all views if nothing found
     if not all_x and not all_y:
         for view in views:
-            x_labels, y_labels = _extract_from_view(view)
+            x_labels, y_labels = _extract_from_view(view, page_rotation)
             if x_labels or y_labels:
                 if source_view == ViewType.UNKNOWN:
                     source_view = view.view_type
@@ -72,18 +88,23 @@ def extract_grid_system(views: list[View]) -> GridSystem | None:
     )
 
 
-def _extract_from_view(view: View) -> tuple[list[GridLabel], list[GridLabel]]:
+def _extract_from_view(
+    view: View,
+    page_rotation: int = 0,
+) -> tuple[list[GridLabel], list[GridLabel]]:
     """Extract grid labels and associate with lines from a single view."""
     label_matches = _find_grid_labels(view.texts)
     if not label_matches:
         return [], []
 
+    swapped = page_rotation in (90, 270)
+
     x_labels: list[GridLabel] = []
     y_labels: list[GridLabel] = []
 
     for axis, index, label_text, text_span in label_matches:
-        line = _associate_label_to_line(axis, text_span, view.lines)
-        position = _label_position(axis, text_span, line)
+        line = _associate_label_to_line(axis, text_span, view.lines, swapped)
+        position = _label_position(axis, text_span, line, swapped)
         label = GridLabel(
             axis=axis,
             label=label_text,
@@ -153,19 +174,31 @@ def _associate_label_to_line(
     axis: GridAxis,
     text_span: TextSpan,
     lines: list[Line],
+    axes_swapped: bool = False,
 ) -> Line | None:
-    """Find the nearest long line of correct orientation for a grid label."""
+    """Find the nearest long line of correct orientation for a grid label.
+
+    When axes_swapped=True (rotation 90/270), X-grid lines appear horizontal
+    in mediabox and Y-grid lines appear vertical — the opposite of no rotation.
+    """
     candidates: list[tuple[float, Line]] = []
 
     for ln in lines:
         if ln.length < MIN_GRID_LINE_LENGTH:
             continue
 
-        # X-grid labels → vertical lines, Y-grid labels → horizontal lines
-        if axis == GridAxis.X and not is_vertical(ln, tolerance_deg=10.0):
-            continue
-        if axis == GridAxis.Y and not is_horizontal(ln, tolerance_deg=10.0):
-            continue
+        if axes_swapped:
+            # Rotated: X-grid → horizontal in mediabox, Y-grid → vertical
+            if axis == GridAxis.X and not is_horizontal(ln, tolerance_deg=10.0):
+                continue
+            if axis == GridAxis.Y and not is_vertical(ln, tolerance_deg=10.0):
+                continue
+        else:
+            # Normal: X-grid → vertical, Y-grid → horizontal
+            if axis == GridAxis.X and not is_vertical(ln, tolerance_deg=10.0):
+                continue
+            if axis == GridAxis.Y and not is_horizontal(ln, tolerance_deg=10.0):
+                continue
 
         d = point_to_line_distance(text_span.center, ln)
         candidates.append((d, ln))
@@ -181,13 +214,33 @@ def _associate_label_to_line(
     return best_line
 
 
-def _label_position(axis: GridAxis, text_span: TextSpan, line: Line | None) -> float:
-    """Determine position coordinate for a grid label."""
-    if line:
+def _label_position(
+    axis: GridAxis,
+    text_span: TextSpan,
+    line: Line | None,
+    axes_swapped: bool = False,
+) -> float:
+    """Determine position coordinate for a grid label.
+
+    When axes_swapped=True (rotation 90/270):
+      X-axis position uses mediabox Y (= visual X for rot 270)
+      Y-axis position uses mediabox X (= visual Y for rot 270)
+    """
+    if axes_swapped:
+        if line:
+            if axis == GridAxis.X:
+                return (line.p1.y + line.p2.y) / 2
+            else:
+                return (line.p1.x + line.p2.x) / 2
         if axis == GridAxis.X:
-            return (line.p1.x + line.p2.x) / 2
-        else:
-            return (line.p1.y + line.p2.y) / 2
-    if axis == GridAxis.X:
+            return text_span.center.y
         return text_span.center.x
-    return text_span.center.y
+    else:
+        if line:
+            if axis == GridAxis.X:
+                return (line.p1.x + line.p2.x) / 2
+            else:
+                return (line.p1.y + line.p2.y) / 2
+        if axis == GridAxis.X:
+            return text_span.center.x
+        return text_span.center.y
