@@ -279,6 +279,8 @@
                 <button class="tab-btn" onclick="switchTab('heights')">高さ</button>
                 <button class="tab-btn" onclick="switchTab('matching')">マッチング</button>
                 <button class="tab-btn" onclick="switchTab('structure')">構造モデル</button>
+                <button class="tab-btn" onclick="switchTab('quantity')">積算</button>
+                <button class="tab-btn" onclick="switchTab('members')">部材リスト</button>
                 <button class="tab-btn" onclick="switchTab('quality')">品質チェック</button>
                 <button class="tab-btn" onclick="switchTab('json')">JSON</button>
             </div>
@@ -290,6 +292,8 @@
             <div class="tab-panel" id="panel-heights"></div>
             <div class="tab-panel" id="panel-matching"></div>
             <div class="tab-panel" id="panel-structure"></div>
+            <div class="tab-panel" id="panel-quantity"></div>
+            <div class="tab-panel" id="panel-members"></div>
             <div class="tab-panel" id="panel-quality"></div>
             <div class="tab-panel" id="panel-json"></div>
         </div>
@@ -371,7 +375,7 @@
         function switchTab(name) {
             document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
             document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
-            const tabs = ["pdf", "texts", "grid", "dims", "heights", "matching", "structure", "quality", "json"];
+            const tabs = ["pdf", "texts", "grid", "dims", "heights", "matching", "structure", "quantity", "members", "quality", "json"];
             const idx = tabs.indexOf(name);
             if (idx >= 0) {
                 document.querySelectorAll(".tab-btn")[idx].classList.add("active");
@@ -388,6 +392,8 @@
             renderHeightsTab(data);
             renderMatchingTab(data);
             renderStructureTab(data);
+            renderQuantityTab(data);
+            renderMemberCatalogTab();
             renderQualityTab(data);
             renderJsonTab(data);
         }
@@ -783,6 +789,149 @@
             if (sm.members.length > 100) {
                 html += '<p style="color:#999;margin-top:8px">' + sm.members.length + ' 部材のうち先頭100件を表示。全件はJSONタブを参照。</p>';
             }
+
+            panel.innerHTML = html;
+        }
+
+        // --- Quantity Tab (Step 4) ---
+        function renderQuantityTab(data) {
+            const panel = document.getElementById("panel-quantity");
+            const qt = data.quantity_takeoff;
+
+            if (!qt) {
+                panel.innerHTML = '<p style="color:#999">積算データがありません（構造モデルが必要です）。</p>';
+                return;
+            }
+
+            var html = '';
+            html += '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">構造モデルの部材を種別・長さでグループ化し、数量集計表を生成します。断面・重量は部材リスト連携後に表示されます。</p>';
+
+            // Summary cards
+            html += '<h3 style="margin-bottom:12px;color:#333;font-size:1rem">積算サマリー</h3>';
+            html += '<div class="diag-grid">';
+            html += diagCard("グループ数", qt.groups.length);
+            html += diagCard("総部材数", qt.total_members);
+            html += diagCard("総延長", (qt.total_length / 1000).toFixed(1) + " m");
+            html += diagCard("総重量", qt.total_weight != null ? (qt.total_weight / 1000).toFixed(2) + " t" : "—");
+            html += '</div>';
+
+            // Group table
+            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">部材グループ別集計</h3>';
+            html += '<table><tr><th>種別</th><th>断面</th><th>単位長さ (mm)</th><th>本数</th><th>合計長さ (m)</th><th>重量 (kg)</th></tr>';
+            qt.groups.forEach(function(g) {
+                html += '<tr>';
+                html += '<td><strong>' + (typeNames[g.member_type] || g.member_type) + '</strong></td>';
+                html += '<td>' + (g.section || '<span style="color:#ccc">—</span>') + '</td>';
+                html += '<td>' + g.unit_length.toFixed(0) + '</td>';
+                html += '<td>' + g.count + '</td>';
+                html += '<td>' + (g.total_length / 1000).toFixed(1) + '</td>';
+                html += '<td>' + (g.total_weight != null ? g.total_weight.toFixed(1) : '<span style="color:#ccc">—</span>') + '</td>';
+                html += '</tr>';
+            });
+            // Total row
+            var totalWeight = null;
+            qt.groups.forEach(function(g) {
+                if (g.total_weight != null) {
+                    totalWeight = (totalWeight || 0) + g.total_weight;
+                }
+            });
+            html += '<tr style="border-top:2px solid #333;font-weight:bold;background:#f0f0f0">';
+            html += '<td>合計</td>';
+            html += '<td></td>';
+            html += '<td>—</td>';
+            html += '<td>' + qt.total_members + '</td>';
+            html += '<td>' + (qt.total_length / 1000).toFixed(1) + '</td>';
+            html += '<td>' + (totalWeight != null ? totalWeight.toFixed(1) : '—') + '</td>';
+            html += '</tr>';
+            html += '</table>';
+
+            // Labels preview per group
+            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">グループ別部材ラベル</h3>';
+            qt.groups.forEach(function(g) {
+                var labels = g.member_labels || [];
+                var preview = labels.slice(0, 8).join(', ');
+                if (labels.length > 8) preview += ' ... (他 ' + (labels.length - 8) + '本)';
+                html += '<div style="margin-bottom:8px">';
+                html += '<strong>' + (typeNames[g.member_type] || g.member_type) + '</strong>';
+                html += ' (' + g.unit_length.toFixed(0) + 'mm × ' + g.count + '本)';
+                html += '<br><span style="color:#666;font-size:0.85rem">' + esc(preview) + '</span>';
+                html += '</div>';
+            });
+
+            panel.innerHTML = html;
+        }
+
+        // --- Member Catalog Tab ---
+        var memberCatalogData = null;
+        async function renderMemberCatalogTab() {
+            const panel = document.getElementById("panel-members");
+            panel.innerHTML = '<p style="color:#666">部材リストを読み込み中...</p>';
+
+            try {
+                const res = await fetch("/api/member-catalog");
+                memberCatalogData = await res.json();
+            } catch (err) {
+                panel.innerHTML = '<p style="color:#dc2626">部材リスト取得エラー: ' + err.message + '</p>';
+                return;
+            }
+
+            const catalog = memberCatalogData;
+            var html = '';
+            html += '<p style="color:#666;margin-bottom:16px;font-size:0.9rem">';
+            html += '図面 MEMBER LIST から断面情報を解析し、単位重量 (kg/m) を算出します。ラチストラス部材は弦材＋斜材の合算重量です。';
+            html += '</p>';
+
+            html += '<h3 style="margin-bottom:12px;color:#333;font-size:1rem">図番: ' + esc(catalog.drawing_number) + '</h3>';
+
+            // Main table
+            html += '<table>';
+            html += '<tr><th>NO.</th><th>名称</th><th>断面</th><th>材質</th><th style="text-align:right">断面積 (mm²)</th><th style="text-align:right">単位重量 (kg/m)</th><th>構成</th></tr>';
+
+            catalog.entries.forEach(function(e) {
+                var areaText = '-';
+                if (e.sections && e.sections.length > 0) {
+                    areaText = e.sections.map(function(s) { return s.area.toFixed(1); }).join(' + ');
+                }
+
+                html += '<tr>';
+                html += '<td><strong>' + esc(e.number) + '</strong></td>';
+                html += '<td>' + esc(e.name) + '</td>';
+                html += '<td style="font-size:0.85rem">' + esc(e.section_text) + '</td>';
+                html += '<td><span class="badge single">' + esc(e.material) + '</span></td>';
+                html += '<td style="text-align:right">' + areaText + '</td>';
+                html += '<td style="text-align:right;font-weight:700;color:#4f46e5">' + e.unit_weight.toFixed(3) + '</td>';
+
+                // Composition column
+                if (e.truss) {
+                    var t = e.truss;
+                    html += '<td style="font-size:0.8rem;color:#666">';
+                    html += '弦材: ' + t.chord_count + '×' + esc(t.chord.notation) + ' (' + t.chord_weight_per_m.toFixed(3) + ')<br>';
+                    html += 'ラチス: ' + esc(t.lattice.notation) + '/cos(' + t.angle_deg.toFixed(0) + '°) (' + t.lattice_weight_per_m.toFixed(3) + ')';
+                    html += '</td>';
+                } else if (e.sections && e.sections.length > 1) {
+                    html += '<td style="font-size:0.8rem;color:#666">';
+                    html += e.sections.map(function(s) { return esc(s.notation) + ' (' + s.unit_weight.toFixed(3) + ')'; }).join('<br>');
+                    html += '</td>';
+                } else if (e.sections && e.sections.length === 1) {
+                    html += '<td style="font-size:0.8rem;color:#666">' + esc(e.sections[0].shape) + '</td>';
+                } else {
+                    html += '<td>-</td>';
+                }
+                html += '</tr>';
+            });
+            html += '</table>';
+
+            // Calculation formula reference
+            html += '<div style="margin-top:24px;padding:16px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px">';
+            html += '<h4 style="margin-bottom:8px;color:#333;font-size:0.9rem">計算式</h4>';
+            html += '<div style="font-size:0.85rem;color:#666;line-height:1.8">';
+            html += 'Pipe (P-Dφ×t): A = π(D−t)t<br>';
+            html += 'Square tube (□-B×H×t): A = 2(B+H−2t)t<br>';
+            html += 'Angle (L-a×b×t): A = (a+b−t)t<br>';
+            html += 'Round bar (M-d): A = πd²/4<br>';
+            html += 'ラチストラス: 弦材重量 + ラチス重量/cos(θ)<br>';
+            html += '単位重量 = 断面積 × 7.85×10⁻³ kg/(mm²·m)';
+            html += '</div></div>';
 
             panel.innerHTML = html;
         }

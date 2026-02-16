@@ -8,6 +8,7 @@ from .dimensions import extract_dimensions
 from .grids import extract_grid_system
 from .heights import extract_heights
 from .matching import run_matching
+from .quantity import compute_quantity_takeoff
 from .reconstruction import reconstruct_3d
 from .models import AnalysisResult, GateStatus, QualityCheck, QualityReport
 from .primitives import extract_page_primitives
@@ -88,6 +89,15 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
             diagnostics["structural_frame_count"] = structural_model.frame_count
             diagnostics["structural_member_summary"] = structural_model.member_summary
 
+    # Step 4: Quantity Takeoff
+    quantity_takeoff = None
+    if structural_model:
+        quantity_takeoff = compute_quantity_takeoff(structural_model)
+        if quantity_takeoff:
+            diagnostics["quantity_groups"] = len(quantity_takeoff.groups)
+            diagnostics["quantity_total_members"] = quantity_takeoff.total_members
+            diagnostics["quantity_total_length_m"] = round(quantity_takeoff.total_length / 1000, 1)
+
     doc.close()
 
     # Step G: Assemble result
@@ -105,5 +115,6 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         quality=quality,
         matching=matching,
         structural_model=structural_model,
+        quantity_takeoff=quantity_takeoff,
         diagnostics=diagnostics,
     )

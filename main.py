@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from drawing import analyze_drawing
+from drawing.steel_sections import build_fix_r15_catalog
 
 load_dotenv()
 
@@ -32,6 +33,13 @@ async def index(request: Request):
 async def chat(msg: ChatMessage):
     response = model.generate_content(msg.message)
     return {"reply": response.text}
+
+
+@app.get("/api/member-catalog")
+def member_catalog():
+    """Return the FIX-R-15 member catalog (section → unit weight)."""
+    catalog = build_fix_r15_catalog()
+    return catalog.model_dump()
 
 
 @app.post("/api/analyze")

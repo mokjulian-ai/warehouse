@@ -305,6 +305,32 @@ class StructuralModel(BaseModel):
     member_summary: dict[str, int] = Field(default_factory=dict)
 
 
+# --- Step 4: Quantity Takeoff ---
+
+
+class MemberGroup(BaseModel):
+    """A group of identical members (same type + similar length)."""
+
+    member_type: MemberType
+    unit_length: float  # Representative length in mm
+    count: int
+    total_length: float  # mm
+    section: str | None = None  # e.g. "H-200x100x5.5x8" (future)
+    unit_weight: float | None = None  # kg/m (future)
+    total_weight: float | None = None  # kg (future)
+    member_labels: list[str] = Field(default_factory=list)
+
+
+class QuantityTakeoff(BaseModel):
+    """Step 4 output: grouped member quantities."""
+
+    groups: list[MemberGroup]
+    total_members: int
+    total_length: float  # mm
+    total_weight: float | None = None  # kg (None until section data available)
+    group_tolerance: float = 10.0  # mm tolerance for length grouping
+
+
 # --- Final Output (Step G) ---
 
 
@@ -322,4 +348,5 @@ class AnalysisResult(BaseModel):
     quality: QualityReport
     matching: MatchingResult | None = None
     structural_model: StructuralModel | None = None
+    quantity_takeoff: QuantityTakeoff | None = None
     diagnostics: dict = Field(default_factory=dict)
