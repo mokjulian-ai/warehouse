@@ -357,9 +357,10 @@ class DetectedMember(BaseModel):
     unit_length: float | None = None  # mm per member
     total_length: float | None = None  # mm (line_count * unit_length)
     section_text: str = ""  # From catalog: e.g. "2Ps-42.7φ×2.3t, D=450, ..."
-    unit_weight: float | None = None  # kg/m from catalog (total for lattice)
-    chord_weight_per_m: float | None = None  # kg/m (chord only, lattice members)
-    lattice_weight_per_m: float | None = None  # kg/m (lattice only, lattice members)
+    member_kind: str = ""  # "chord", "lattice", or "" (simple member)
+    unit_weight: float | None = None  # kg/m actually used for this member
+    chord_weight_per_m: float | None = None  # kg/m (chord only, for reference)
+    lattice_weight_per_m: float | None = None  # kg/m (lattice only, for reference)
     total_weight: float | None = None  # kg (total_length/1000 * unit_weight)
 
 

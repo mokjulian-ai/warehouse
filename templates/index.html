@@ -1104,17 +1104,20 @@
             // Members table
             html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">検出部材一覧</h3>';
             html += '<table>';
-            html += '<tr><th>NO.</th><th>ラベル</th><th>名称</th><th>断面</th><th>方向</th><th>本数</th><th>単位長さ (mm)</th><th>合計長さ (m)</th><th>kg/m (弦材)</th><th>kg/m (ラチス)</th><th>kg/m (合計)</th><th>合計重量 (kg)</th></tr>';
+            html += '<tr><th>NO.</th><th>ラベル</th><th>名称</th><th>断面</th><th>種別</th><th>方向</th><th>本数</th><th>単位長さ (mm)</th><th>合計長さ (m)</th><th>kg/m</th><th>合計重量 (kg)</th></tr>';
             members.forEach(function(m) {
                 var name = memberTypeNames[m.member_number] || "—";
                 var orientLabel = m.orientation === "x" ? "X (桁行)" : m.orientation === "y" ? "Y (スパン)" : "—";
                 var lineCount = m.line_count || m.tip_count;
                 var unitLen = m.unit_length != null ? m.unit_length.toLocaleString() : "—";
                 var totalLen = m.total_length != null ? (m.total_length / 1000).toFixed(1) : '<span style="color:#ccc">—</span>';
-                var chordW = m.chord_weight_per_m != null ? m.chord_weight_per_m.toFixed(3) : '<span style="color:#ccc">—</span>';
-                var latticeW = m.lattice_weight_per_m != null ? m.lattice_weight_per_m.toFixed(3) : '<span style="color:#ccc">—</span>';
                 var unitW = m.unit_weight != null ? m.unit_weight.toFixed(3) : '<span style="color:#ccc">—</span>';
                 var totalW = m.total_weight != null ? m.total_weight.toFixed(1) : '<span style="color:#ccc">—</span>';
+                // Kind badge
+                var kindLabel = "—";
+                var kindClass = "";
+                if (m.member_kind === "chord") { kindLabel = "弦材"; kindClass = "pass"; }
+                else if (m.member_kind === "lattice") { kindLabel = "ラチス"; kindClass = "single"; }
                 // Truncate section text for display
                 var secText = m.section_text || "—";
                 if (secText.length > 35) secText = secText.substring(0, 32) + "...";
@@ -1124,13 +1127,12 @@
                 html += '<td>' + esc(m.label) + '</td>';
                 html += '<td>' + esc(name) + (m.modifier ? ' (' + esc(m.modifier) + ')' : '') + '</td>';
                 html += '<td style="font-size:0.8rem;color:#666" title="' + esc(m.section_text || '') + '">' + esc(secText) + '</td>';
+                html += '<td>' + (kindClass ? '<span class="badge ' + kindClass + '">' + kindLabel + '</span>' : kindLabel) + '</td>';
                 html += '<td><span class="badge ' + (m.orientation === "x" ? "pass" : m.orientation === "y" ? "single" : "warn") + '">' + orientLabel + '</span></td>';
                 html += '<td style="text-align:center">' + lineCount + '</td>';
                 html += '<td style="text-align:right">' + unitLen + '</td>';
                 html += '<td style="text-align:right">' + totalLen + '</td>';
-                html += '<td style="text-align:right;color:#666">' + chordW + '</td>';
-                html += '<td style="text-align:right;color:#666">' + latticeW + '</td>';
-                html += '<td style="text-align:right;color:#333;font-weight:600">' + unitW + '</td>';
+                html += '<td style="text-align:right;color:#666">' + unitW + '</td>';
                 html += '<td style="text-align:right;font-weight:700;color:#4f46e5">' + totalW + '</td>';
                 html += '</tr>';
             });
@@ -1143,9 +1145,9 @@
             });
             if (hasTotal) {
                 html += '<tr style="border-top:2px solid #333;font-weight:bold;background:#f0f0f0">';
-                html += '<td colspan="7">合計</td>';
+                html += '<td colspan="8">合計</td>';
                 html += '<td style="text-align:right">' + (grandTotalLen / 1000).toFixed(1) + '</td>';
-                html += '<td colspan="3"></td>';
+                html += '<td></td>';
                 html += '<td style="text-align:right;color:#4f46e5">' + grandTotalW.toFixed(1) + '</td>';
                 html += '</tr>';
             }

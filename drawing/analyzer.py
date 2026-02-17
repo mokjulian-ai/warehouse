@@ -146,10 +146,15 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
             entry = catalog_map.get(m.member_number)
             if entry:
                 m.section_text = entry.section_text
-                m.unit_weight = entry.unit_weight
                 if entry.truss:
                     m.chord_weight_per_m = entry.truss.chord_weight_per_m
                     m.lattice_weight_per_m = entry.truss.lattice_weight_per_m
+                    # Lattice truss members in 小屋伏図 → use lattice weight
+                    m.member_kind = "lattice"
+                    m.unit_weight = entry.truss.lattice_weight_per_m
+                else:
+                    # Simple member — use full unit_weight
+                    m.unit_weight = entry.unit_weight
                 if m.total_length and m.unit_weight:
                     m.total_weight = m.total_length / 1000 * m.unit_weight
 
