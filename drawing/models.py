@@ -356,6 +356,9 @@ class DetectedMember(BaseModel):
     orientation: str = ""  # "x" (longitudinal) or "y" (transverse)
     unit_length: float | None = None  # mm per member
     total_length: float | None = None  # mm (line_count * unit_length)
+    section_text: str = ""  # From catalog: e.g. "2Ps-42.7φ×2.3t, D=450, ..."
+    unit_weight: float | None = None  # kg/m from catalog
+    total_weight: float | None = None  # kg (total_length/1000 * unit_weight)
 
 
 class KoyafuseResult(BaseModel):

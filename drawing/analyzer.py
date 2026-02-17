@@ -9,6 +9,7 @@ from .grids import extract_grid_system
 from .heights import extract_heights
 from .koyafuse import detect_koyafuse_members
 from .matching import run_matching
+from .steel_sections import build_fix_r15_catalog
 from .quantity import compute_quantity_takeoff
 from .reconstruction import reconstruct_3d
 from .models import AnalysisResult, GateStatus, QualityCheck, QualityReport
@@ -120,6 +121,32 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
                     m.unit_length = matching.span
                 if m.unit_length and m.line_count:
                     m.total_length = m.line_count * m.unit_length
+
+        # Assign weights from member catalog
+        catalog = build_fix_r15_catalog()
+        # Build lookup: circled number → catalog entry
+        catalog_map: dict[str, tuple[str, float]] = {}
+        for entry in catalog.entries:
+            # Extract base number from ①②...⑫ or ⑤a etc.
+            num_str = entry.number
+            # Convert ① → "1", ② → "2", etc.
+            base_num = ""
+            for ch in num_str:
+                cp = ord(ch)
+                if 0x2460 <= cp <= 0x2473:  # ①-⑳
+                    base_num = str(cp - 0x2460 + 1)
+                elif 0x2474 <= cp <= 0x2487:  # ⑴-⑵ (parenthesized)
+                    base_num = str(cp - 0x2474 + 1)
+            if base_num and base_num not in catalog_map:
+                # Only store the first (base) entry per number
+                catalog_map[base_num] = (entry.section_text, entry.unit_weight)
+
+        for m in koyafuse.detected_members:
+            match = catalog_map.get(m.member_number)
+            if match:
+                m.section_text, m.unit_weight = match
+                if m.total_length and m.unit_weight:
+                    m.total_weight = m.total_length / 1000 * m.unit_weight
 
     doc.close()
 
