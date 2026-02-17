@@ -124,8 +124,9 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
 
         # Assign weights from member catalog
         catalog = build_fix_r15_catalog()
-        # Build lookup: circled number → catalog entry
-        catalog_map: dict[str, tuple[str, float]] = {}
+        # Build lookup: circled number → full catalog entry
+        from .steel_sections import MemberEntry
+        catalog_map: dict[str, MemberEntry] = {}
         for entry in catalog.entries:
             # Extract base number from ①②...⑫ or ⑤a etc.
             num_str = entry.number
@@ -139,12 +140,16 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
                     base_num = str(cp - 0x2474 + 1)
             if base_num and base_num not in catalog_map:
                 # Only store the first (base) entry per number
-                catalog_map[base_num] = (entry.section_text, entry.unit_weight)
+                catalog_map[base_num] = entry
 
         for m in koyafuse.detected_members:
-            match = catalog_map.get(m.member_number)
-            if match:
-                m.section_text, m.unit_weight = match
+            entry = catalog_map.get(m.member_number)
+            if entry:
+                m.section_text = entry.section_text
+                m.unit_weight = entry.unit_weight
+                if entry.truss:
+                    m.chord_weight_per_m = entry.truss.chord_weight_per_m
+                    m.lattice_weight_per_m = entry.truss.lattice_weight_per_m
                 if m.total_length and m.unit_weight:
                     m.total_weight = m.total_length / 1000 * m.unit_weight
 
