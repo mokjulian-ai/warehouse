@@ -111,6 +111,16 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         diagnostics["koyafuse_page"] = koyafuse.page_index
         diagnostics["koyafuse_members"] = len(koyafuse.detected_members)
 
+        # Compute member lengths using matching dimensions
+        if matching:
+            for m in koyafuse.detected_members:
+                if m.orientation == "x" and matching.length:
+                    m.unit_length = matching.length
+                elif m.orientation == "y" and matching.span:
+                    m.unit_length = matching.span
+                if m.unit_length and m.tip_count:
+                    m.total_length = m.tip_count * m.unit_length
+
     doc.close()
 
     # Step G: Assemble result

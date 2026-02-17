@@ -244,6 +244,18 @@ def _detect_members(
             tip_count=len(tips),
         ))
 
+    # 4. Determine orientation by grouping all tips of same label
+    label_tips: dict[str, list[LeaderTip]] = {}
+    for m in detected:
+        label_tips.setdefault(m.label, []).extend(m.leader_tips)
+
+    label_orient: dict[str, str] = {}
+    for label, all_tips in label_tips.items():
+        label_orient[label] = _determine_orientation(all_tips, lines)
+
+    for m in detected:
+        m.orientation = label_orient.get(m.label, "")
+
     # Sort by member number then modifier
     detected.sort(key=lambda m: (int(m.member_number), m.modifier))
     return detected
@@ -361,3 +373,62 @@ def _find_leader_tips(
     # Sort by distance ascending
     tips.sort(key=lambda t: t.length)
     return tips
+
+
+def _determine_orientation(
+    tips: list[LeaderTip],
+    lines: list[tuple[float, float, float, float, float, float]],
+) -> str:
+    """Determine if members run in X (longitudinal) or Y (transverse) direction.
+
+    For multi-tip members: if tips spread more in Y → members run in X direction.
+    For single-tip members: find nearest structural line and check its angle.
+    """
+    if len(tips) >= 2:
+        xs = [t.x for t in tips]
+        ys = [t.y for t in tips]
+        x_spread = max(xs) - min(xs)
+        y_spread = max(ys) - min(ys)
+        return "x" if y_spread > x_spread else "y"
+
+    if len(tips) == 1:
+        tip = tips[0]
+        horiz_count = 0
+        vert_count = 0
+        for lx1, ly1, lx2, ly2, llen, lw in lines:
+            if llen < 3:
+                continue
+            d = _point_to_segment_dist(tip.x, tip.y, lx1, ly1, lx2, ly2)
+            if d > 15:
+                continue
+            # Skip the leader line itself (endpoint at tip, diagonal)
+            d1 = math.hypot(lx1 - tip.x, ly1 - tip.y)
+            d2 = math.hypot(lx2 - tip.x, ly2 - tip.y)
+            if (d1 < 3 or d2 < 3) and lw < 0.35:
+                continue
+            angle = math.degrees(
+                math.atan2(abs(ly2 - ly1), abs(lx2 - lx1))
+            )
+            if angle < 30:
+                horiz_count += 1
+            elif angle > 60:
+                vert_count += 1
+        if horiz_count > 0 or vert_count > 0:
+            return "x" if horiz_count > vert_count else "y"
+
+    return ""
+
+
+def _point_to_segment_dist(
+    px: float, py: float,
+    x1: float, y1: float, x2: float, y2: float,
+) -> float:
+    """Distance from point (px,py) to line segment (x1,y1)-(x2,y2)."""
+    dx, dy = x2 - x1, y2 - y1
+    len_sq = dx * dx + dy * dy
+    if len_sq < 1e-9:
+        return math.hypot(px - x1, py - y1)
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / len_sq))
+    proj_x = x1 + t * dx
+    proj_y = y1 + t * dy
+    return math.hypot(px - proj_x, py - proj_y)
