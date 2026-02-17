@@ -332,18 +332,34 @@ def _parse_lattice_entry(
     material: str,
     name_en: str,
 ) -> MemberEntry:
-    """Parse a lattice truss member entry."""
-    chord_count = _extract_count(section_text)
-    if chord_count == 1:
-        chord_count = 2  # Lattice truss default: 2 chords (top + bottom)
+    """Parse a lattice truss member entry.
 
-    # Chord section: text before ラチス
+    Supports multiple chord types (e.g. 外□-100×100 + 内□-60×60).
+    """
+    # Chord section(s): text before ラチス
     chord_text = section_text.split("ラチス")[0]
-    chord = parse_section(chord_text)
 
     # Lattice section: text after ラチス
     lattice_text = section_text.split("ラチス")[1]
     lattice = parse_section(lattice_text)
+
+    # Parse all chord sections (may be multiple: 外□-..., 内□-...)
+    chord_parts = re.split(r"[,，]\s*", chord_text)
+    chords: list[tuple[int, SteelSection]] = []  # (count, section)
+    for part in chord_parts:
+        part = part.strip()
+        if not part or re.match(r"^D[=＝]", part):
+            continue
+        count = _extract_count(part)
+        sec = parse_section(part)
+        if sec:
+            chords.append((count, sec))
+
+    # If only one chord type and count=1, default to 2 (top + bottom)
+    if len(chords) == 1 and chords[0][0] == 1:
+        chords[0] = (2, chords[0][1])
+
+    total_chord_w = sum(c * s.unit_weight for c, s in chords)
 
     # Depth: D=450 or D=450,375 (tapered → average)
     depths: list[float] = []
@@ -358,29 +374,50 @@ def _parse_lattice_entry(
     m_t = re.search(r"[θΘ][=＝](\d+\.?\d*)", section_text)
     angle = float(m_t.group(1)) if m_t else 45.0
 
-    if chord and lattice and depth > 0:
-        truss = calc_lattice_truss(chord, chord_count, lattice, depth, angle)
+    # Build sections list for display
+    all_sections = [s for _, s in chords]
+    if lattice:
+        all_sections.append(lattice)
+
+    # Primary chord for LatticeTrussSpec (use largest chord)
+    primary_chord = max(chords, key=lambda cs: cs[1].area)[1] if chords else None
+    primary_count = sum(c for c, _ in chords)
+
+    if primary_chord and lattice and depth > 0:
+        angle_rad = math.radians(angle)
+        lattice_w = lattice.unit_weight / math.cos(angle_rad)
+        total_w = total_chord_w + lattice_w
+
+        truss = LatticeTrussSpec(
+            chord=primary_chord,
+            chord_count=primary_count,
+            lattice=lattice,
+            depth=depth,
+            angle_deg=angle,
+            chord_weight_per_m=round(total_chord_w, 3),
+            lattice_weight_per_m=round(lattice_w, 3),
+            total_weight_per_m=round(total_w, 3),
+        )
         return MemberEntry(
             number=number,
             name=name,
             name_en=name_en,
             section_text=section_text,
             material=material,
-            sections=[chord, lattice],
+            sections=all_sections,
             truss=truss,
             unit_weight=truss.total_weight_per_m,
         )
 
     # Fallback
-    secs = [s for s in [chord, lattice] if s]
-    w = sum(s.unit_weight for s in secs)
+    w = total_chord_w + (lattice.unit_weight if lattice else 0.0)
     return MemberEntry(
         number=number,
         name=name,
         name_en=name_en,
         section_text=section_text,
         material=material,
-        sections=secs,
+        sections=all_sections,
         unit_weight=round(w, 3),
     )
 
@@ -408,19 +445,19 @@ def build_fix_r15_catalog() -> MemberCatalog:
             "上P-42.7φ×2.3t, 下P-42.7φ×2.3t",
             "STK400",
         ),
-        ("④", "繋材", "purlin", "P-42.7φ×2.3t", "STK400"),
-        ("⑤", "繋材", "purlin_large", "P-48.6φ×2.3t", "STK400"),
-        ("⑥", "繋材", "purlin_6", "P-42.7φ×2.3t", "STK400"),
-        ("⑥a", "繋材", "purlin_square", "□-50×50×2.3t", "STKR400"),
-        ("⑥b", "ブレース", "brace", "M12", "SNR400B"),
+        ("④", "横継材", "purlin", "P-42.7φ×2.3t", "STK400"),
+        ("⑤", "横継材", "purlin_large", "P-48.6φ×2.3t", "STK400"),
+        ("⑤a", "横継材", "purlin_5a", "P-42.7φ×2.3t", "STK400"),
+        ("⑤b", "横継材", "purlin_square", "□-50×50×2.3t", "STKR400"),
+        ("⑥", "ブレース", "brace", "M12（T.B付き）", "SNR400B"),
         (
             "⑦",
-            "水平繋材",
+            "水平梁材",
             "horizontal_tie",
-            "角□-60×60×2.3t, D=600, ラチスP-27.2φ×1.9t, θ=45°",
+            "外□-100×100×2.3t, 内□-60×60×2.3t, D=600, ラチスP-27.2φ×1.9t, θ=45°",
             "STKR400",
         ),
-        ("⑧", "隅柱材", "corner_column", "□-100×100×2.3t", "STKR400"),
+        ("⑧", "間柱材", "corner_column", "□-100×100×2.3t", "STKR400"),
         ("⑨", "束材", "post", "□-50×50×2.3t", "STKR400"),
         ("⑩", "胴繋材", "girt", "□-60×60×1.6t", "STKR400"),
         (
