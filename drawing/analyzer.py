@@ -118,8 +118,8 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
                     m.unit_length = matching.length
                 elif m.orientation == "y" and matching.span:
                     m.unit_length = matching.span
-                if m.unit_length and m.tip_count:
-                    m.total_length = m.tip_count * m.unit_length
+                if m.unit_length and m.line_count:
+                    m.total_length = m.line_count * m.unit_length
 
     doc.close()
 

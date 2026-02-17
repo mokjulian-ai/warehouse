@@ -1104,26 +1104,33 @@
             // Members table
             html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">検出部材一覧</h3>';
             html += '<table>';
-            html += '<tr><th>NO.</th><th>ラベル</th><th>名称</th><th>方向</th><th>本数</th><th>単位長さ (mm)</th><th>計算式</th><th>合計長さ (m)</th></tr>';
+            html += '<tr><th>NO.</th><th>ラベル</th><th>名称</th><th>方向</th><th>検出</th><th>本数</th><th>単位長さ (mm)</th><th>計算式</th><th>合計長さ (m)</th></tr>';
             members.forEach(function(m) {
                 var name = memberTypeNames[m.member_number] || "—";
                 var orientLabel = m.orientation === "x" ? "X (桁行)" : m.orientation === "y" ? "Y (スパン)" : "—";
                 var unitLen = m.unit_length != null ? m.unit_length.toLocaleString() : "—";
+                var lineCount = m.line_count || m.tip_count;
                 var formula = '';
                 var totalLen = '';
-                if (m.unit_length != null && m.tip_count > 0) {
-                    formula = m.tip_count + ' × ' + m.unit_length.toLocaleString();
+                if (m.unit_length != null && lineCount > 0) {
+                    formula = lineCount + ' × ' + m.unit_length.toLocaleString();
                     totalLen = (m.total_length / 1000).toFixed(1);
                 } else {
                     formula = '<span style="color:#ccc">—</span>';
                     totalLen = '<span style="color:#ccc">—</span>';
+                }
+                // Show detection method: tip_count = labeled, line_count = total (may differ)
+                var detectInfo = m.tip_count + ' tip';
+                if (lineCount > m.tip_count) {
+                    detectInfo += ' → ' + lineCount + ' line';
                 }
                 html += '<tr>';
                 html += '<td><strong>' + esc(m.member_number) + '</strong></td>';
                 html += '<td>' + esc(m.label) + '</td>';
                 html += '<td>' + esc(name) + (m.modifier ? ' (' + esc(m.modifier) + ')' : '') + '</td>';
                 html += '<td><span class="badge ' + (m.orientation === "x" ? "pass" : m.orientation === "y" ? "single" : "warn") + '">' + orientLabel + '</span></td>';
-                html += '<td style="text-align:center"><span class="badge single">' + m.tip_count + '</span></td>';
+                html += '<td style="font-size:0.85rem;color:#666">' + detectInfo + '</td>';
+                html += '<td style="text-align:center"><span class="badge single">' + lineCount + '</span></td>';
                 html += '<td style="text-align:right">' + unitLen + '</td>';
                 html += '<td style="font-size:0.85rem;color:#666">' + formula + '</td>';
                 html += '<td style="text-align:right;font-weight:700;color:#4f46e5">' + totalLen + '</td>';
@@ -1137,7 +1144,7 @@
             });
             if (hasTotal) {
                 html += '<tr style="border-top:2px solid #333;font-weight:bold;background:#f0f0f0">';
-                html += '<td colspan="7">合計</td>';
+                html += '<td colspan="8">合計</td>';
                 html += '<td style="text-align:right;color:#4f46e5">' + (grandTotal / 1000).toFixed(1) + '</td>';
                 html += '</tr>';
             }

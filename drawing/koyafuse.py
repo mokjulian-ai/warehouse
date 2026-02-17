@@ -256,9 +256,92 @@ def _detect_members(
     for m in detected:
         m.orientation = label_orient.get(m.label, "")
 
+    # 5. Count structural lines (including unlabeled ones)
+    _count_structural_lines(detected, lines, drawing_bbox)
+
     # Sort by member number then modifier
     detected.sort(key=lambda m: (int(m.member_number), m.modifier))
     return detected
+
+
+def _count_structural_lines(
+    detected: list[DetectedMember],
+    lines: list[tuple[float, float, float, float, float, float]],
+    drawing_bbox: dict | None,
+) -> None:
+    """Count total structural lines for each member, including unlabeled ones.
+
+    For X-direction members (purlins): line_count = tip_count (each tip = one line).
+    For Y-direction members (frames): find all vertical structural lines with
+    matching length in the drawing area and count distinct X positions.
+    """
+    if not drawing_bbox:
+        for m in detected:
+            m.line_count = m.tip_count
+        return
+
+    bx0 = drawing_bbox["x0"] - 5
+    bx1 = drawing_bbox["x1"] + 5
+    by0 = drawing_bbox["y0"] - 20
+    by1 = drawing_bbox["y1"] + 20
+
+    # Build a map of vertical structural lines grouped by length category
+    # (x_position, line_length) for all long vertical lines in drawing area
+    vert_lines: list[tuple[float, float]] = []  # (x_center, length)
+    for lx1, ly1, lx2, ly2, llen, lw in lines:
+        if abs(lw - 0.42) > 0.05 or llen < 150:
+            continue
+        angle = math.degrees(math.atan2(abs(ly2 - ly1), abs(lx2 - lx1)))
+        if angle < 80:
+            continue
+        cx = (lx1 + lx2) / 2
+        cy = (ly1 + ly2) / 2
+        if bx0 <= cx <= bx1 and by0 <= cy <= by1:
+            vert_lines.append((cx, llen))
+
+    # Group into distinct X positions (merge within 5pts)
+    vert_lines.sort()
+    vert_positions: list[tuple[float, float]] = []  # (x, max_length)
+    for cx, llen in vert_lines:
+        if vert_positions and abs(cx - vert_positions[-1][0]) <= 5:
+            prev_x, prev_len = vert_positions[-1]
+            vert_positions[-1] = (prev_x, max(prev_len, llen))
+        else:
+            vert_positions.append((cx, llen))
+
+    for m in detected:
+        if m.orientation == "x":
+            # For purlins: each leader tip = one structural line
+            m.line_count = m.tip_count
+        elif m.orientation == "y" and m.leader_tips:
+            # Find the structural line length at this member's tip
+            tip = m.leader_tips[0]
+            ref_len = 0.0
+            best_dist = float("inf")
+            for lx1, ly1, lx2, ly2, llen, lw in lines:
+                if abs(lw - 0.42) > 0.05 or llen < 150:
+                    continue
+                angle = math.degrees(
+                    math.atan2(abs(ly2 - ly1), abs(lx2 - lx1))
+                )
+                if angle < 80:
+                    continue
+                d = _point_to_segment_dist(tip.x, tip.y, lx1, ly1, lx2, ly2)
+                if d < best_dist:
+                    best_dist = d
+                    ref_len = llen
+
+            if ref_len > 0:
+                # Count vertical lines with similar length (within 5%)
+                tol = ref_len * 0.05
+                m.line_count = sum(
+                    1 for _, vlen in vert_positions
+                    if abs(vlen - ref_len) <= tol
+                )
+            else:
+                m.line_count = m.tip_count
+        else:
+            m.line_count = m.tip_count
 
 
 def _find_leader_tips(

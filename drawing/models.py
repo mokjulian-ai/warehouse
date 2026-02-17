@@ -352,9 +352,10 @@ class DetectedMember(BaseModel):
     label_y: float  # Visual Y position of label
     leader_tips: list[LeaderTip] = Field(default_factory=list)
     tip_count: int = 0
+    line_count: int = 0  # Total structural lines (including unlabeled ones)
     orientation: str = ""  # "x" (longitudinal) or "y" (transverse)
     unit_length: float | None = None  # mm per member
-    total_length: float | None = None  # mm (tip_count * unit_length)
+    total_length: float | None = None  # mm (line_count * unit_length)
 
 
 class KoyafuseResult(BaseModel):
