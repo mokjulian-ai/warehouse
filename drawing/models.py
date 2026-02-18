@@ -372,6 +372,7 @@ class KoyafuseResult(BaseModel):
     scale: str = ""  # e.g. "1/100"
     detected_members: list[DetectedMember]
     drawing_bbox: dict | None = None  # Visual bounding box of drawing area
+    drawing_image: str = ""  # base64 PNG of cropped drawing area
     mediabox_width: float = 0.0  # For coordinate inverse transform
     page_visual_width: float = 0.0  # page.rect width (after rotation)
     page_visual_height: float = 0.0  # page.rect height (after rotation)

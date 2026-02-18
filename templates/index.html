@@ -979,14 +979,14 @@
             var images = data.page_images || [];
             var kf = data.koyafuse;
 
-            if (images.length < 2) {
-                panel.innerHTML = '<p style="color:#999">小屋伏図ページ（2ページ目）がありません。複数ページのPDFをアップロードしてください。</p>';
+            if (!kf) {
+                panel.innerHTML = '<p style="color:#999">小屋伏図が検出されませんでした。</p>';
                 return;
             }
 
             var html = '';
             html += '<p style="color:#666;margin-bottom:12px;font-size:0.9rem">';
-            html += '小屋伏図に検出した部材ラベルを引出線先端位置に表示します。';
+            html += '小屋伏図に検出した部材ラベルを表示します。';
             html += '</p>';
 
             // Toggle button for overlay
@@ -997,15 +997,30 @@
             html += '</label>';
             html += '</div>';
 
+            // Use cropped drawing image if available, else full page
+            var imgSrc = kf.drawing_image ? kf.drawing_image : (images.length > kf.page_index ? images[kf.page_index] : null);
+            if (!imgSrc) {
+                panel.innerHTML = html + '<p style="color:#999">画像がありません。</p>';
+                return;
+            }
+            var useCropped = !!kf.drawing_image && !!kf.drawing_bbox;
+            var bb = kf.drawing_bbox || {};
+            var pad = 15;  // must match backend padding
+
             // Image container with overlay
             html += '<div style="background:#fafafa;border:1px solid #e5e7eb;border-radius:8px;padding:16px;overflow:auto">';
             html += '<div id="koyafuseContainer" style="position:relative;display:inline-block">';
-            html += '<img id="koyafuseImg" src="data:image/png;base64,' + images[1] + '" alt="小屋伏図" style="max-width:100%;height:auto;display:block">';
+            html += '<img id="koyafuseImg" src="data:image/png;base64,' + imgSrc + '" alt="小屋伏図" style="max-width:100%;height:auto;display:block">';
 
             // Overlay markers at all structural line positions
-            if (kf && kf.detected_members && kf.mediabox_width > 0) {
+            if (kf.detected_members) {
                 var pvw = kf.page_visual_width;
                 var pvh = kf.page_visual_height;
+                // Cropped image dimensions in visual coords
+                var cropX0 = useCropped ? (bb.x0 - pad) : 0;
+                var cropY0 = useCropped ? (bb.y0 - pad) : 0;
+                var cropW = useCropped ? (bb.x1 - bb.x0 + 2 * pad) : pvw;
+                var cropH = useCropped ? (bb.y1 - bb.y0 + 2 * pad) : pvh;
 
                 kf.detected_members.forEach(function(m) {
                     var positions = m.line_positions || [];
@@ -1017,8 +1032,8 @@
                     }
 
                     positions.forEach(function(pos) {
-                        var leftPct = pos[0] / pvw * 100;
-                        var topPct = pos[1] / pvh * 100;
+                        var leftPct = (pos[0] - cropX0) / cropW * 100;
+                        var topPct = (pos[1] - cropY0) / cropH * 100;
 
                         html += '<div class="kf-marker" style="';
                         html += 'position:absolute;';

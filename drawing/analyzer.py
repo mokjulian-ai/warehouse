@@ -112,6 +112,20 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         diagnostics["koyafuse_page"] = koyafuse.page_index
         diagnostics["koyafuse_members"] = len(koyafuse.detected_members)
 
+        # Render cropped image of just the drawing area
+        if koyafuse.drawing_bbox:
+            bb = koyafuse.drawing_bbox
+            pad = 15  # padding in points
+            clip = fitz.Rect(
+                bb["x0"] - pad, bb["y0"] - pad,
+                bb["x1"] + pad, bb["y1"] + pad,
+            )
+            kf_page = doc[koyafuse.page_index]
+            pix = kf_page.get_pixmap(dpi=150, clip=clip)
+            koyafuse.drawing_image = base64.b64encode(
+                pix.tobytes("png")
+            ).decode("ascii")
+
         # Compute member lengths using matching dimensions
         if matching:
             for m in koyafuse.detected_members:
