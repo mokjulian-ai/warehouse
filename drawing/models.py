@@ -379,7 +379,7 @@ class KoyafuseResult(BaseModel):
 
 
 class AxialFrameResult(BaseModel):
-    """Result of 軸組図 (Y1) member detection."""
+    """Result of 軸組図 member detection (used for Y1, Y2, X1, Xn+1, X2~Xn)."""
 
     page_index: int
     scale: str = ""
@@ -412,4 +412,8 @@ class AnalysisResult(BaseModel):
     quantity_takeoff: QuantityTakeoff | None = None
     koyafuse: KoyafuseResult | None = None
     axial_frame: AxialFrameResult | None = None
+    axial_frame_y2: AxialFrameResult | None = None
+    axial_frame_x1: AxialFrameResult | None = None
+    axial_frame_xn1: AxialFrameResult | None = None
+    axial_frame_x2xn: AxialFrameResult | None = None
     diagnostics: dict = Field(default_factory=dict)

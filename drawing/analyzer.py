@@ -7,16 +7,70 @@ import fitz
 from .dimensions import extract_dimensions
 from .grids import extract_grid_system
 from .heights import extract_heights
-from .axial_frame import detect_axial_frame_members
+from .axial_frame import (
+    detect_axial_frame_members,
+    detect_axial_frame_y2,
+    detect_axial_frame_x1,
+    detect_axial_frame_xn1,
+    detect_axial_frame_x2xn,
+)
 from .koyafuse import detect_koyafuse_members
 from .matching import run_matching
-from .steel_sections import build_fix_r15_catalog
+from .steel_sections import build_fix_r15_catalog, MemberEntry
 from .quantity import compute_quantity_takeoff
 from .reconstruction import reconstruct_3d
-from .models import AnalysisResult, GateStatus, QualityCheck, QualityReport
+from .models import AnalysisResult, AxialFrameResult, GateStatus, QualityCheck, QualityReport
 from .primitives import extract_page_primitives
 from .quality import run_quality_gates
 from .views import segment_views
+
+
+def _crop_drawing_image(
+    doc: fitz.Document,
+    result: AxialFrameResult,
+) -> None:
+    """Render cropped image of drawing area into result.drawing_image."""
+    if not result.drawing_bbox:
+        return
+    bb = result.drawing_bbox
+    pad = 15
+    clip = fitz.Rect(
+        bb["x0"] - pad, bb["y0"] - pad,
+        bb["x1"] + pad, bb["y1"] + pad,
+    )
+    page = doc[result.page_index]
+    pix = page.get_pixmap(dpi=150, clip=clip)
+    result.drawing_image = base64.b64encode(pix.tobytes("png")).decode("ascii")
+
+
+def _assign_lengths_and_weights(
+    result: AxialFrameResult,
+    matching,
+    catalog_map: dict[str, MemberEntry],
+) -> None:
+    """Compute member lengths from matching and assign weights from catalog."""
+    if matching:
+        for m in result.detected_members:
+            if m.orientation == "x" and matching.length:
+                m.unit_length = matching.length
+            elif m.orientation == "y" and matching.span:
+                m.unit_length = matching.span
+            if m.unit_length and m.line_count:
+                m.total_length = m.line_count * m.unit_length
+
+    for m in result.detected_members:
+        entry = catalog_map.get(m.member_number)
+        if entry:
+            m.section_text = entry.section_text
+            if entry.truss:
+                m.chord_weight_per_m = entry.truss.chord_weight_per_m
+                m.lattice_weight_per_m = entry.truss.lattice_weight_per_m
+                m.member_kind = "lattice"
+                m.unit_weight = entry.truss.lattice_weight_per_m
+            else:
+                m.unit_weight = entry.unit_weight
+            if m.total_length and m.unit_weight:
+                m.total_weight = m.total_length / 1000 * m.unit_weight
 
 
 def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
@@ -107,8 +161,7 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
             diagnostics["quantity_total_members"] = quantity_takeoff.total_members
             diagnostics["quantity_total_length_m"] = round(quantity_takeoff.total_length / 1000, 1)
 
-    # Shared catalog lookup for weight assignment (Steps 5, 5b)
-    from .steel_sections import MemberEntry
+    # Shared catalog lookup for weight assignment (Steps 5, 5b–5f)
     catalog_map: dict[str, MemberEntry] = {}
 
     # Step 5: 小屋伏図 member detection
@@ -120,7 +173,7 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         # Render cropped image of just the drawing area
         if koyafuse.drawing_bbox:
             bb = koyafuse.drawing_bbox
-            pad = 15  # padding in points
+            pad = 15
             clip = fitz.Rect(
                 bb["x0"] - pad, bb["y0"] - pad,
                 bb["x1"] + pad, bb["y1"] + pad,
@@ -141,7 +194,7 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
                 if m.unit_length and m.line_count:
                     m.total_length = m.line_count * m.unit_length
 
-        # Assign weights from member catalog
+        # Build catalog map on first use
         if not catalog_map:
             catalog = build_fix_r15_catalog()
             for entry in catalog.entries:
@@ -163,11 +216,9 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
                 if entry.truss:
                     m.chord_weight_per_m = entry.truss.chord_weight_per_m
                     m.lattice_weight_per_m = entry.truss.lattice_weight_per_m
-                    # Lattice truss members in 小屋伏図 → use lattice weight
                     m.member_kind = "lattice"
                     m.unit_weight = entry.truss.lattice_weight_per_m
                 else:
-                    # Simple member — use full unit_weight
                     m.unit_weight = entry.unit_weight
                 if m.total_length and m.unit_weight:
                     m.total_weight = m.total_length / 1000 * m.unit_weight
@@ -177,57 +228,40 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
     if axial_frame:
         diagnostics["axial_frame_page"] = axial_frame.page_index
         diagnostics["axial_frame_members"] = len(axial_frame.detected_members)
+        _crop_drawing_image(doc, axial_frame)
+        _assign_lengths_and_weights(axial_frame, matching, catalog_map)
 
-        # Render cropped image of drawing area
-        if axial_frame.drawing_bbox:
-            bb = axial_frame.drawing_bbox
-            pad = 15
-            clip = fitz.Rect(
-                bb["x0"] - pad, bb["y0"] - pad,
-                bb["x1"] + pad, bb["y1"] + pad,
-            )
-            af_page = doc[axial_frame.page_index]
-            pix = af_page.get_pixmap(dpi=150, clip=clip)
-            axial_frame.drawing_image = base64.b64encode(
-                pix.tobytes("png")
-            ).decode("ascii")
+    # Step 5c: 軸組図 Y2 member detection
+    axial_frame_y2 = detect_axial_frame_y2(doc)
+    if axial_frame_y2:
+        diagnostics["axial_frame_y2_page"] = axial_frame_y2.page_index
+        diagnostics["axial_frame_y2_members"] = len(axial_frame_y2.detected_members)
+        _crop_drawing_image(doc, axial_frame_y2)
+        _assign_lengths_and_weights(axial_frame_y2, matching, catalog_map)
 
-        # Compute member lengths from matching dimensions
-        if matching:
-            for m in axial_frame.detected_members:
-                if m.orientation == "x" and matching.length:
-                    m.unit_length = matching.length
-                elif m.orientation == "y" and matching.span:
-                    m.unit_length = matching.span
-                if m.unit_length and m.line_count:
-                    m.total_length = m.line_count * m.unit_length
+    # Step 5d: 軸組図 X1 member detection
+    axial_frame_x1 = detect_axial_frame_x1(doc)
+    if axial_frame_x1:
+        diagnostics["axial_frame_x1_page"] = axial_frame_x1.page_index
+        diagnostics["axial_frame_x1_members"] = len(axial_frame_x1.detected_members)
+        _crop_drawing_image(doc, axial_frame_x1)
+        _assign_lengths_and_weights(axial_frame_x1, matching, catalog_map)
 
-        # Assign weights from member catalog (reuse catalog if already built)
-        if not catalog_map:
-            catalog = build_fix_r15_catalog()
-            for entry in catalog.entries:
-                num_str = entry.number
-                base_num = ""
-                for ch in num_str:
-                    cp = ord(ch)
-                    if 0x2460 <= cp <= 0x2473:
-                        base_num = str(cp - 0x2460 + 1)
-                if base_num and base_num not in catalog_map:
-                    catalog_map[base_num] = entry
+    # Step 5e: 軸組図 Xn+1 member detection
+    axial_frame_xn1 = detect_axial_frame_xn1(doc)
+    if axial_frame_xn1:
+        diagnostics["axial_frame_xn1_page"] = axial_frame_xn1.page_index
+        diagnostics["axial_frame_xn1_members"] = len(axial_frame_xn1.detected_members)
+        _crop_drawing_image(doc, axial_frame_xn1)
+        _assign_lengths_and_weights(axial_frame_xn1, matching, catalog_map)
 
-        for m in axial_frame.detected_members:
-            entry = catalog_map.get(m.member_number)
-            if entry:
-                m.section_text = entry.section_text
-                if entry.truss:
-                    m.chord_weight_per_m = entry.truss.chord_weight_per_m
-                    m.lattice_weight_per_m = entry.truss.lattice_weight_per_m
-                    m.member_kind = "lattice"
-                    m.unit_weight = entry.truss.lattice_weight_per_m
-                else:
-                    m.unit_weight = entry.unit_weight
-                if m.total_length and m.unit_weight:
-                    m.total_weight = m.total_length / 1000 * m.unit_weight
+    # Step 5f: 断面図 X2~Xn member detection
+    axial_frame_x2xn = detect_axial_frame_x2xn(doc)
+    if axial_frame_x2xn:
+        diagnostics["axial_frame_x2xn_page"] = axial_frame_x2xn.page_index
+        diagnostics["axial_frame_x2xn_members"] = len(axial_frame_x2xn.detected_members)
+        _crop_drawing_image(doc, axial_frame_x2xn)
+        _assign_lengths_and_weights(axial_frame_x2xn, matching, catalog_map)
 
     doc.close()
 
@@ -250,5 +284,9 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         quantity_takeoff=quantity_takeoff,
         koyafuse=koyafuse,
         axial_frame=axial_frame,
+        axial_frame_y2=axial_frame_y2,
+        axial_frame_x1=axial_frame_x1,
+        axial_frame_xn1=axial_frame_xn1,
+        axial_frame_x2xn=axial_frame_x2xn,
         diagnostics=diagnostics,
     )
