@@ -481,6 +481,31 @@ def _determine_orientation(
 
     if len(tips) == 1:
         tip = tips[0]
+        # Step 1: Check structural lines (w >= 0.35) weighted by length.
+        # At joints where both H and V thick lines cross, the longer
+        # line is the member the leader points to (e.g. column > beam stub).
+        struct_horiz_len = 0.0
+        struct_vert_len = 0.0
+        for lx1, ly1, lx2, ly2, llen, lw in lines:
+            if llen < 3 or lw < 0.35:
+                continue
+            d = _point_to_segment_dist(tip.x, tip.y, lx1, ly1, lx2, ly2)
+            if d > 15:
+                continue
+            angle = math.degrees(
+                math.atan2(abs(ly2 - ly1), abs(lx2 - lx1))
+            )
+            if angle < 30:
+                struct_horiz_len += llen
+            elif angle > 60:
+                struct_vert_len += llen
+        if struct_horiz_len > 0 and struct_vert_len > 0:
+            # Both directions have structural lines — use length weighting
+            return "x" if struct_horiz_len > struct_vert_len else "y"
+
+        # Step 2: Fallback — count all lines including thin dashes (w=0.30).
+        # This handles cases where the labeled member is a dashed line
+        # (e.g. purlins w=0.30) near a solid frame column (w=0.42).
         horiz_count = 0
         vert_count = 0
         for lx1, ly1, lx2, ly2, llen, lw in lines:
@@ -489,7 +514,6 @@ def _determine_orientation(
             d = _point_to_segment_dist(tip.x, tip.y, lx1, ly1, lx2, ly2)
             if d > 15:
                 continue
-            # Skip the leader line itself (endpoint at tip, diagonal)
             d1 = math.hypot(lx1 - tip.x, ly1 - tip.y)
             d2 = math.hypot(lx2 - tip.x, ly2 - tip.y)
             if (d1 < 3 or d2 < 3) and lw < 0.35:
