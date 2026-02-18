@@ -353,6 +353,7 @@ class DetectedMember(BaseModel):
     leader_tips: list[LeaderTip] = Field(default_factory=list)
     tip_count: int = 0
     line_count: int = 0  # Total structural lines (including unlabeled ones)
+    line_positions: list[list[float]] = Field(default_factory=list)  # [[x, y], ...] visual coords of all structural lines
     orientation: str = ""  # "x" (longitudinal) or "y" (transverse)
     unit_length: float | None = None  # mm per member
     total_length: float | None = None  # mm (line_count * unit_length)

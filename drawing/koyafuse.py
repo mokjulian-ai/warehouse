@@ -286,8 +286,8 @@ def _count_structural_lines(
     by1 = drawing_bbox["y1"] + 20
 
     # Build a map of vertical structural lines grouped by length category
-    # (x_position, line_length) for all long vertical lines in drawing area
-    vert_lines: list[tuple[float, float]] = []  # (x_center, length)
+    # (x_position, y_center, line_length) for all long vertical lines in drawing area
+    vert_lines: list[tuple[float, float, float]] = []  # (x_center, y_center, length)
     for lx1, ly1, lx2, ly2, llen, lw in lines:
         if abs(lw - 0.42) > 0.05 or llen < 150:
             continue
@@ -297,22 +297,23 @@ def _count_structural_lines(
         cx = (lx1 + lx2) / 2
         cy = (ly1 + ly2) / 2
         if bx0 <= cx <= bx1 and by0 <= cy <= by1:
-            vert_lines.append((cx, llen))
+            vert_lines.append((cx, cy, llen))
 
     # Group into distinct X positions (merge within 5pts)
     vert_lines.sort()
-    vert_positions: list[tuple[float, float]] = []  # (x, max_length)
-    for cx, llen in vert_lines:
+    vert_positions: list[tuple[float, float, float]] = []  # (x, y_center, max_length)
+    for cx, cy, llen in vert_lines:
         if vert_positions and abs(cx - vert_positions[-1][0]) <= 5:
-            prev_x, prev_len = vert_positions[-1]
-            vert_positions[-1] = (prev_x, max(prev_len, llen))
+            prev_x, prev_cy, prev_len = vert_positions[-1]
+            vert_positions[-1] = (prev_x, (prev_cy + cy) / 2, max(prev_len, llen))
         else:
-            vert_positions.append((cx, llen))
+            vert_positions.append((cx, cy, llen))
 
     for m in detected:
         if m.orientation == "x":
             # For purlins: each leader tip = one structural line
             m.line_count = m.tip_count
+            m.line_positions = [[t.x, t.y] for t in m.leader_tips]
         elif m.orientation == "y" and m.leader_tips:
             # Find the structural line length at this member's tip
             tip = m.leader_tips[0]
@@ -332,16 +333,20 @@ def _count_structural_lines(
                     ref_len = llen
 
             if ref_len > 0:
-                # Count vertical lines with similar length (within 5%)
+                # Collect vertical lines with similar length (within 5%)
                 tol = ref_len * 0.05
-                m.line_count = sum(
-                    1 for _, vlen in vert_positions
+                matched = [
+                    (vx, vy) for vx, vy, vlen in vert_positions
                     if abs(vlen - ref_len) <= tol
-                )
+                ]
+                m.line_count = len(matched)
+                m.line_positions = [[vx, vy] for vx, vy in matched]
             else:
                 m.line_count = m.tip_count
+                m.line_positions = [[t.x, t.y] for t in m.leader_tips]
         else:
             m.line_count = m.tip_count
+            m.line_positions = [[t.x, t.y] for t in m.leader_tips]
 
 
 def _find_leader_tips(

@@ -1002,20 +1002,23 @@
             html += '<div id="koyafuseContainer" style="position:relative;display:inline-block">';
             html += '<img id="koyafuseImg" src="data:image/png;base64,' + images[1] + '" alt="小屋伏図" style="max-width:100%;height:auto;display:block">';
 
-            // Overlay markers at each leader tip
+            // Overlay markers at all structural line positions
             if (kf && kf.detected_members && kf.mediabox_width > 0) {
-                var mw = kf.mediabox_width;
                 var pvw = kf.page_visual_width;
                 var pvh = kf.page_visual_height;
 
                 kf.detected_members.forEach(function(m) {
-                    var tips = m.leader_tips || [];
+                    var positions = m.line_positions || [];
                     var color = memberColors[m.member_number] || "#666";
 
-                    tips.forEach(function(tip) {
-                        // _to_visual coords are already page rect coords
-                        var leftPct = tip.x / pvw * 100;
-                        var topPct = tip.y / pvh * 100;
+                    // Fall back to leader_tips if no line_positions
+                    if (positions.length === 0 && m.leader_tips) {
+                        positions = m.leader_tips.map(function(t) { return [t.x, t.y]; });
+                    }
+
+                    positions.forEach(function(pos) {
+                        var leftPct = pos[0] / pvw * 100;
+                        var topPct = pos[1] / pvh * 100;
 
                         html += '<div class="kf-marker" style="';
                         html += 'position:absolute;';
