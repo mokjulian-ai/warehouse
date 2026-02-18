@@ -7,6 +7,7 @@ import fitz
 from .dimensions import extract_dimensions
 from .grids import extract_grid_system
 from .heights import extract_heights
+from .axial_frame import detect_axial_frame_members
 from .koyafuse import detect_koyafuse_members
 from .matching import run_matching
 from .steel_sections import build_fix_r15_catalog
@@ -106,6 +107,10 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
             diagnostics["quantity_total_members"] = quantity_takeoff.total_members
             diagnostics["quantity_total_length_m"] = round(quantity_takeoff.total_length / 1000, 1)
 
+    # Shared catalog lookup for weight assignment (Steps 5, 5b)
+    from .steel_sections import MemberEntry
+    catalog_map: dict[str, MemberEntry] = {}
+
     # Step 5: 小屋伏図 member detection
     koyafuse = detect_koyafuse_members(doc)
     if koyafuse:
@@ -137,24 +142,19 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
                     m.total_length = m.line_count * m.unit_length
 
         # Assign weights from member catalog
-        catalog = build_fix_r15_catalog()
-        # Build lookup: circled number → full catalog entry
-        from .steel_sections import MemberEntry
-        catalog_map: dict[str, MemberEntry] = {}
-        for entry in catalog.entries:
-            # Extract base number from ①②...⑫ or ⑤a etc.
-            num_str = entry.number
-            # Convert ① → "1", ② → "2", etc.
-            base_num = ""
-            for ch in num_str:
-                cp = ord(ch)
-                if 0x2460 <= cp <= 0x2473:  # ①-⑳
-                    base_num = str(cp - 0x2460 + 1)
-                elif 0x2474 <= cp <= 0x2487:  # ⑴-⑵ (parenthesized)
-                    base_num = str(cp - 0x2474 + 1)
-            if base_num and base_num not in catalog_map:
-                # Only store the first (base) entry per number
-                catalog_map[base_num] = entry
+        if not catalog_map:
+            catalog = build_fix_r15_catalog()
+            for entry in catalog.entries:
+                num_str = entry.number
+                base_num = ""
+                for ch in num_str:
+                    cp = ord(ch)
+                    if 0x2460 <= cp <= 0x2473:
+                        base_num = str(cp - 0x2460 + 1)
+                    elif 0x2474 <= cp <= 0x2487:
+                        base_num = str(cp - 0x2474 + 1)
+                if base_num and base_num not in catalog_map:
+                    catalog_map[base_num] = entry
 
         for m in koyafuse.detected_members:
             entry = catalog_map.get(m.member_number)
@@ -168,6 +168,63 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
                     m.unit_weight = entry.truss.lattice_weight_per_m
                 else:
                     # Simple member — use full unit_weight
+                    m.unit_weight = entry.unit_weight
+                if m.total_length and m.unit_weight:
+                    m.total_weight = m.total_length / 1000 * m.unit_weight
+
+    # Step 5b: 軸組図 Y1 member detection
+    axial_frame = detect_axial_frame_members(doc)
+    if axial_frame:
+        diagnostics["axial_frame_page"] = axial_frame.page_index
+        diagnostics["axial_frame_members"] = len(axial_frame.detected_members)
+
+        # Render cropped image of drawing area
+        if axial_frame.drawing_bbox:
+            bb = axial_frame.drawing_bbox
+            pad = 15
+            clip = fitz.Rect(
+                bb["x0"] - pad, bb["y0"] - pad,
+                bb["x1"] + pad, bb["y1"] + pad,
+            )
+            af_page = doc[axial_frame.page_index]
+            pix = af_page.get_pixmap(dpi=150, clip=clip)
+            axial_frame.drawing_image = base64.b64encode(
+                pix.tobytes("png")
+            ).decode("ascii")
+
+        # Compute member lengths from matching dimensions
+        if matching:
+            for m in axial_frame.detected_members:
+                if m.orientation == "x" and matching.length:
+                    m.unit_length = matching.length
+                elif m.orientation == "y" and matching.span:
+                    m.unit_length = matching.span
+                if m.unit_length and m.line_count:
+                    m.total_length = m.line_count * m.unit_length
+
+        # Assign weights from member catalog (reuse catalog if already built)
+        if not catalog_map:
+            catalog = build_fix_r15_catalog()
+            for entry in catalog.entries:
+                num_str = entry.number
+                base_num = ""
+                for ch in num_str:
+                    cp = ord(ch)
+                    if 0x2460 <= cp <= 0x2473:
+                        base_num = str(cp - 0x2460 + 1)
+                if base_num and base_num not in catalog_map:
+                    catalog_map[base_num] = entry
+
+        for m in axial_frame.detected_members:
+            entry = catalog_map.get(m.member_number)
+            if entry:
+                m.section_text = entry.section_text
+                if entry.truss:
+                    m.chord_weight_per_m = entry.truss.chord_weight_per_m
+                    m.lattice_weight_per_m = entry.truss.lattice_weight_per_m
+                    m.member_kind = "lattice"
+                    m.unit_weight = entry.truss.lattice_weight_per_m
+                else:
                     m.unit_weight = entry.unit_weight
                 if m.total_length and m.unit_weight:
                     m.total_weight = m.total_length / 1000 * m.unit_weight
@@ -192,5 +249,6 @@ def analyze_drawing(pdf_bytes: bytes, filename: str) -> AnalysisResult:
         structural_model=structural_model,
         quantity_takeoff=quantity_takeoff,
         koyafuse=koyafuse,
+        axial_frame=axial_frame,
         diagnostics=diagnostics,
     )

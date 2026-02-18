@@ -378,6 +378,19 @@ class KoyafuseResult(BaseModel):
     page_visual_height: float = 0.0  # page.rect height (after rotation)
 
 
+class AxialFrameResult(BaseModel):
+    """Result of 軸組図 (Y1) member detection."""
+
+    page_index: int
+    scale: str = ""
+    detected_members: list[DetectedMember]
+    drawing_bbox: dict | None = None
+    drawing_image: str = ""
+    mediabox_width: float = 0.0
+    page_visual_width: float = 0.0
+    page_visual_height: float = 0.0
+
+
 # --- Final Output (Step G) ---
 
 
@@ -398,4 +411,5 @@ class AnalysisResult(BaseModel):
     structural_model: StructuralModel | None = None
     quantity_takeoff: QuantityTakeoff | None = None
     koyafuse: KoyafuseResult | None = None
+    axial_frame: AxialFrameResult | None = None
     diagnostics: dict = Field(default_factory=dict)
