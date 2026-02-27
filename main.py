@@ -79,12 +79,20 @@ async def gemini_analyze_axial(req: GeminiAxialRequest):
 Find all member labels (circled numbers like ①, ②, ③) in the image.
 Some labels have modifiers like "内側" or "外側" next to them — treat these as separate members.
 
+CRITICAL RULES:
+- You MUST calculate each member's length by reading the actual dimension numbers shown in the image (寸法線の数値). Do NOT guess or assume lengths — use only the values printed on the drawing.
+- If dimension lines show sub-segments (e.g. 7500 + 7500), SUM them to get the full span between grid lines (= 15000). Never use only a partial segment when the member spans the full distance between two grids.
+- Every labeled member visible in the drawing has a physical length. Never return 0 or null for unit_length_mm — find the correct dimension value from the image.
+
 For each label:
-- Count how many structural lines it points to (via leader lines)
-- Determine orientation: "x" (horizontal), "y" (vertical), "diagonal", or "arch"
-- Calculate total length using the dimension numbers shown in the drawing.
-  IMPORTANT: A member may be a continuous element — e.g. a main frame truss that includes columns + arch as one piece. Trace the FULL path of the member (columns + curved/straight portions) and sum all segments. Do not count only the arch or only the columns.
-  For curved/arch portions, estimate the arc length from the span and rise dimensions.
+1. Count how many structural lines it points to (via leader lines). This is the "line_count" (本数).
+2. Determine orientation: "x" (horizontal in the drawing), "y" (vertical in the drawing), "diagonal", or "arch".
+3. Calculate **unit_length_mm** (length of ONE member) by reading the dimension numbers from the image:
+   - For horizontal members: identify which grid lines the member spans (e.g. Y1 to Y2). Read ALL dimension segments between those grids and SUM them. Example: if dimensions show 7500 + 7500 between Y1 and Y2, then unit_length_mm = 15000.
+   - For vertical members: read the vertical dimension values that the member spans. Look at the dimension lines on the side of the drawing to find the value that matches the member's actual extent. A member may NOT span the full height — use only the dimensions that correspond to the actual member length.
+   - For the main frame truss (typically ①): this is ALWAYS a CONTINUOUS element from foundation to foundation. Even if other labeled members exist on the columns, the main frame truss MUST include: left column (vertical portion) + arch/curved roof + right column (vertical portion). Sum ALL segments. The column height is shown as a vertical dimension (e.g. 4900), and the arch length should be estimated from the span and rise dimensions. Example: if column height = 4900 and arch length ≈ 15860, then unit_length_mm = 4900 + 15860 + 4900 = 25660.
+   - For curved/arch portions: estimate arc length from span and rise. Arc length ≈ span × (1 + (2/3) × (rise/span)²) is a reasonable approximation.
+4. Calculate **total_length_mm** = unit_length_mm × line_count.
 
 Return ONLY JSON:
 {{
@@ -93,7 +101,7 @@ Return ONLY JSON:
       "member_number": "1",
       "modifier": "",
       "label": "①",
-      "description": "brief description",
+      "description": "brief description of what this member is and which dimension values were used",
       "line_count": 0,
       "orientation": "x",
       "unit_length_mm": null,
@@ -117,18 +125,12 @@ Return ONLY JSON:
         result = json.loads(raw_text)
         members = result.get("members", [])
 
-        # Recalculate total_length on server side for accuracy
+        # Ensure total_length is consistent with unit_length × line_count
         for m in members:
-            orientation = m.get("orientation", "")
             line_count = m.get("line_count", 0) or 0
-            if orientation == "x" and req.length:
-                m["unit_length_mm"] = req.length
-                m["total_length_mm"] = line_count * req.length
-            elif orientation == "y" and req.span:
-                m["unit_length_mm"] = req.span
-                m["total_length_mm"] = line_count * req.span
-            elif m.get("unit_length_mm") and line_count:
-                m["total_length_mm"] = line_count * m["unit_length_mm"]
+            unit_length = m.get("unit_length_mm")
+            if unit_length and line_count:
+                m["total_length_mm"] = line_count * unit_length
 
         return {"members": members, "raw_response": response.text}
 
