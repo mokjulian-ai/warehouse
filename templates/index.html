@@ -323,9 +323,11 @@
             <div class="tab-bar" id="tabBar4">
                 <button class="tab-btn active" onclick="switchAxialTab('results4','axial-y2-view','axial-y2-members')">軸組図(Y2) 表示</button>
                 <button class="tab-btn" onclick="switchAxialTab('results4','axial-y2-members','axial-y2-view')">部材検出</button>
+                <button class="tab-btn" onclick="switchAxialTab('results4','axial-y2-gemini','axial-y2-view')" style="color:#d97706">Gemini 部材検出</button>
             </div>
             <div class="tab-panel active" id="panel-axial-y2-view"></div>
             <div class="tab-panel" id="panel-axial-y2-members"></div>
+            <div class="tab-panel" id="panel-axial-y2-gemini"></div>
         </div>
 
         <!-- Fifth panel: 軸組図 X1 analysis -->
@@ -333,9 +335,11 @@
             <div class="tab-bar" id="tabBar5">
                 <button class="tab-btn active" onclick="switchAxialTab('results5','axial-x1-view','axial-x1-members')">軸組図(X1) 表示</button>
                 <button class="tab-btn" onclick="switchAxialTab('results5','axial-x1-members','axial-x1-view')">部材検出</button>
+                <button class="tab-btn" onclick="switchAxialTab('results5','axial-x1-gemini','axial-x1-view')" style="color:#d97706">Gemini 部材検出</button>
             </div>
             <div class="tab-panel active" id="panel-axial-x1-view"></div>
             <div class="tab-panel" id="panel-axial-x1-members"></div>
+            <div class="tab-panel" id="panel-axial-x1-gemini"></div>
         </div>
 
         <!-- Sixth panel: 軸組図 Xn+1 analysis -->
@@ -343,9 +347,11 @@
             <div class="tab-bar" id="tabBar6">
                 <button class="tab-btn active" onclick="switchAxialTab('results6','axial-xn1-view','axial-xn1-members')">軸組図(Xn+1) 表示</button>
                 <button class="tab-btn" onclick="switchAxialTab('results6','axial-xn1-members','axial-xn1-view')">部材検出</button>
+                <button class="tab-btn" onclick="switchAxialTab('results6','axial-xn1-gemini','axial-xn1-view')" style="color:#d97706">Gemini 部材検出</button>
             </div>
             <div class="tab-panel active" id="panel-axial-xn1-view"></div>
             <div class="tab-panel" id="panel-axial-xn1-members"></div>
+            <div class="tab-panel" id="panel-axial-xn1-gemini"></div>
         </div>
 
         <!-- Seventh panel: 断面図 X2~Xn analysis -->
@@ -353,9 +359,11 @@
             <div class="tab-bar" id="tabBar7">
                 <button class="tab-btn active" onclick="switchAxialTab('results7','axial-x2xn-view','axial-x2xn-members')">断面図(X2~Xn) 表示</button>
                 <button class="tab-btn" onclick="switchAxialTab('results7','axial-x2xn-members','axial-x2xn-view')">部材検出</button>
+                <button class="tab-btn" onclick="switchAxialTab('results7','axial-x2xn-gemini','axial-x2xn-view')" style="color:#d97706">Gemini 部材検出</button>
             </div>
             <div class="tab-panel active" id="panel-axial-x2xn-view"></div>
             <div class="tab-panel" id="panel-axial-x2xn-members"></div>
+            <div class="tab-panel" id="panel-axial-x2xn-gemini"></div>
         </div>
     </div>
 
@@ -504,6 +512,9 @@
                     document.getElementById(cfg.resultDiv).classList.add("active");
                 }
             });
+
+            // Gemini axial tabs: initialize with buttons
+            renderAllGeminiAxialTabs(data);
         }
 
         // --- PDF Tab ---
@@ -1434,6 +1445,193 @@
             }
 
             panel.innerHTML = html;
+        }
+
+        // --- Generic Gemini Axial Tab ---
+        var geminiAxialConfigs = [
+            { key: "axial_frame_y2",   panelId: "panel-axial-y2-gemini",   title: "Y2通り",   viewName: "Y2通り" },
+            { key: "axial_frame_x1",   panelId: "panel-axial-x1-gemini",   title: "X1通り",   viewName: "X1通り" },
+            { key: "axial_frame_xn1",  panelId: "panel-axial-xn1-gemini",  title: "Xn+1通り", viewName: "Xn+1通り" },
+            { key: "axial_frame_x2xn", panelId: "panel-axial-x2xn-gemini", title: "X2~Xn通り", viewName: "X2~Xn通り" },
+        ];
+
+        function renderAllGeminiAxialTabs(data) {
+            geminiAxialConfigs.forEach(function(cfg) {
+                renderGeminiAxialTab(cfg, data);
+            });
+        }
+
+        function renderGeminiAxialTab(cfg, data) {
+            var panel = document.getElementById(cfg.panelId);
+            if (!panel) return;
+
+            var af = data[cfg.key];
+            if (!af || !af.drawing_image) {
+                panel.innerHTML = '<p style="color:#999">軸組図(' + esc(cfg.title) + ')の画像がありません。先にPDFを解析してください。</p>';
+                return;
+            }
+
+            var btnId = "geminiBtn_" + cfg.key;
+            var statusId = "geminiStatus_" + cfg.key;
+            var resultId = "geminiResult_" + cfg.key;
+
+            var html = '';
+            html += '<div style="margin-bottom:20px">';
+            html += '<p style="color:#666;margin-bottom:12px;font-size:0.9rem">';
+            html += 'Gemini 3.0 Pro を使用して軸組図(' + esc(cfg.title) + ')の部材を検出し、各ラベルの合計長さを算出します。';
+            html += '</p>';
+            html += '<button id="' + btnId + '" onclick="runGeminiAxialAnalysis(\'' + cfg.key + '\')" ';
+            html += 'style="padding:10px 24px;background:#d97706;color:#fff;border:none;border-radius:8px;font-size:0.9rem;font-weight:600;cursor:pointer;transition:background 0.2s"';
+            html += ' onmouseover="this.style.background=\'#b45309\'" onmouseout="this.style.background=\'#d97706\'">';
+            html += 'Gemini で解析開始';
+            html += '</button>';
+            html += '<span id="' + statusId + '" style="margin-left:12px;color:#999;font-size:0.85rem"></span>';
+            html += '</div>';
+            html += '<div id="' + resultId + '"></div>';
+            panel.innerHTML = html;
+        }
+
+        async function runGeminiAxialAnalysis(dataKey) {
+            var cfg = geminiAxialConfigs.find(function(c) { return c.key === dataKey; });
+            if (!cfg) return;
+
+            var btnId = "geminiBtn_" + cfg.key;
+            var statusId = "geminiStatus_" + cfg.key;
+            var resultId = "geminiResult_" + cfg.key;
+
+            var btn = document.getElementById(btnId);
+            var status = document.getElementById(statusId);
+            var resultDiv = document.getElementById(resultId);
+
+            if (!analysisData || !analysisData[dataKey]) {
+                status.textContent = cfg.title + "データがありません。";
+                status.style.color = "#ef4444";
+                return;
+            }
+
+            btn.disabled = true;
+            btn.style.background = "#9ca3af";
+            btn.style.cursor = "not-allowed";
+            status.textContent = "Gemini 3.0 Pro で解析中...";
+            status.style.color = "#d97706";
+            resultDiv.innerHTML = '<div style="text-align:center;padding:40px;color:#999"><div style="display:inline-block;width:28px;height:28px;border:3px solid #d97706;border-top-color:transparent;border-radius:50%;animation:spin 1s linear infinite"></div><p style="margin-top:12px">Gemini が画像を解析しています...</p></div>';
+
+            var af = analysisData[dataKey];
+            var m = analysisData.matching || {};
+            var payload = {
+                image: af.drawing_image,
+                view_name: cfg.viewName,
+                span: m.span || null,
+                length: m.length || null
+            };
+
+            try {
+                var res = await fetch("/api/gemini-analyze-axial", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                var data = await res.json();
+
+                if (data.error) {
+                    status.textContent = "エラー: " + data.error;
+                    status.style.color = "#ef4444";
+                    resultDiv.innerHTML = '<div style="padding:16px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#991b1b">'
+                        + '<strong>エラー:</strong> ' + esc(data.error)
+                        + (data.detail ? '<br>' + esc(data.detail) : '')
+                        + (data.raw_response ? '<pre style="margin-top:12px;font-size:0.8rem;white-space:pre-wrap;color:#666">' + esc(data.raw_response) + '</pre>' : '')
+                        + '</div>';
+                    btn.disabled = false;
+                    btn.style.background = "#d97706";
+                    btn.style.cursor = "pointer";
+                    return;
+                }
+
+                status.textContent = "解析完了";
+                status.style.color = "#16a34a";
+                renderGeminiAxialResult(data, resultDiv);
+
+            } catch (e) {
+                status.textContent = "通信エラー";
+                status.style.color = "#ef4444";
+                resultDiv.innerHTML = '<p style="color:#ef4444">' + esc(e.message) + '</p>';
+            }
+
+            btn.disabled = false;
+            btn.style.background = "#d97706";
+            btn.style.cursor = "pointer";
+            btn.textContent = "再解析";
+        }
+
+        function renderGeminiAxialResult(data, container) {
+            var members = data.members || [];
+            var html = '';
+
+            // Summary cards
+            html += '<div class="diag-grid">';
+            html += diagCard("検出部材数", members.length);
+            var uniqueLabels = {};
+            members.forEach(function(m) { uniqueLabels[m.member_number] = true; });
+            html += diagCard("部材種別数", Object.keys(uniqueLabels).length);
+            var totalLen = 0;
+            members.forEach(function(m) { if (m.total_length_mm) totalLen += m.total_length_mm; });
+            html += diagCard("合計長さ", (totalLen / 1000).toFixed(1) + " m");
+            html += diagCard("解析モデル", "Gemini 3.0 Pro");
+            html += '</div>';
+
+            if (members.length === 0) {
+                html += '<p style="color:#999;margin-top:16px">部材が検出されませんでした。</p>';
+                container.innerHTML = html;
+                return;
+            }
+
+            // Members table
+            html += '<h3 style="margin:20px 0 12px;color:#333;font-size:1rem">Gemini 検出部材一覧</h3>';
+            html += '<table>';
+            html += '<tr><th>NO.</th><th>ラベル</th><th>説明</th><th>方向</th><th>本数</th><th>単位長さ (mm)</th><th>合計長さ (m)</th></tr>';
+
+            members.forEach(function(m) {
+                var orientLabel = m.orientation === "x" ? "X (桁行)" : m.orientation === "y" ? "Y (スパン)" : m.orientation === "diagonal" ? "斜め" : "—";
+                var orientClass = m.orientation === "x" ? "pass" : m.orientation === "y" ? "single" : "warn";
+                var unitLen = m.unit_length_mm != null ? Number(m.unit_length_mm).toLocaleString() : "—";
+                var totalLen = m.total_length_mm != null ? (m.total_length_mm / 1000).toFixed(1) : '<span style="color:#ccc">—</span>';
+                var color = memberColors[m.member_number] || "#666";
+
+                html += '<tr>';
+                html += '<td><strong style="color:' + color + '">' + esc(m.member_number) + '</strong></td>';
+                html += '<td>' + esc(m.label || "") + '</td>';
+                html += '<td style="font-size:0.85rem;color:#555">' + esc(m.description || "—") + '</td>';
+                html += '<td><span class="badge ' + orientClass + '">' + orientLabel + '</span></td>';
+                html += '<td style="text-align:center">' + (m.line_count || 0) + '</td>';
+                html += '<td style="text-align:right">' + unitLen + '</td>';
+                html += '<td style="text-align:right;font-weight:700;color:#d97706">' + totalLen + '</td>';
+                html += '</tr>';
+            });
+
+            // Grand total row
+            var grandTotal = 0;
+            var hasAny = false;
+            members.forEach(function(m) {
+                if (m.total_length_mm != null) { grandTotal += m.total_length_mm; hasAny = true; }
+            });
+            if (hasAny) {
+                html += '<tr style="border-top:2px solid #333;font-weight:bold;background:#fffbeb">';
+                html += '<td colspan="6">合計</td>';
+                html += '<td style="text-align:right;color:#d97706">' + (grandTotal / 1000).toFixed(1) + '</td>';
+                html += '</tr>';
+            }
+            html += '</table>';
+
+            // Raw response (collapsible)
+            if (data.raw_response) {
+                html += '<details style="margin-top:20px">';
+                html += '<summary style="cursor:pointer;color:#999;font-size:0.85rem">Gemini 生レスポンスを表示</summary>';
+                html += '<pre style="margin-top:8px;padding:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;font-size:0.8rem;white-space:pre-wrap;color:#666;max-height:400px;overflow:auto">';
+                html += esc(data.raw_response);
+                html += '</pre></details>';
+            }
+
+            container.innerHTML = html;
         }
 
         // --- Quality Tab ---
